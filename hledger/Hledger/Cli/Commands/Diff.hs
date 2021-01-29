@@ -48,7 +48,7 @@ pptxn :: PostingWithPath -> Transaction
 pptxn = fromJust . ptransaction . ppposting
 
 ppamountqty :: PostingWithPath -> Quantity
-ppamountqty = aquantity . head . amounts . pamount . ppposting
+ppamountqty = aquantity . head . pamount . ppposting
 
 allPostingsWithPath :: Journal -> [PostingWithPath]
 allPostingsWithPath j = do

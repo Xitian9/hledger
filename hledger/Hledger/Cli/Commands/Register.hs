@@ -93,7 +93,7 @@ postingsReportItemAsCsvRecord (_, _, _, p, b) = [idx,date,code,desc,acct,amt,bal
                              BalancedVirtualPosting -> wrap "[" "]"
                              VirtualPosting -> wrap "(" ")"
                              _ -> id
-    amt = wbToText . showMixedAmountB oneLine $ pamount p
+    amt = wbToText . showAmountsB     oneLine $ pamount p
     bal = wbToText $ showMixedAmountB oneLine b
 
 -- | Render a register report as plain text suitable for console output.
@@ -108,7 +108,7 @@ postingsReportAsText opts items = TB.toLazyText $ foldMap first3 linesWithWidths
     amtwidth = maximumStrict $ 12 : widths (map itemamt items)
     balwidth = maximumStrict $ 12 : widths (map itembal items)
     widths = map wbWidth . concatMap (showAmountsLinesB noPrice)
-    itemamt (_,_,_,Posting{pamount=a},_) = amounts a
+    itemamt (_,_,_,Posting{pamount=a},_) = a
     itembal (_,_,_,_,a) = amounts a
 
 -- | Render one register report line item as plain text. Layout is like so:
@@ -188,7 +188,7 @@ postingsReportItemAsText opts preferredamtwidth preferredbalwidth (mdate, mendda
             BalancedVirtualPosting -> (wrap "[" "]", acctwidth-2)
             VirtualPosting         -> (wrap "(" ")", acctwidth-2)
             _                      -> (id,acctwidth)
-    amt = showAmountsLinesB dopts . (\x -> if null x then [nullamt] else x) . amounts $ pamount p
+    amt = showAmountsLinesB dopts . (\x -> if null x then [nullamt] else x) $ pamount p
     bal = showAmountsLinesB dopts $ amounts b
     dopts = noPrice{displayColour=color_ . rsOpts $ reportspec_ opts}
     -- Since this will usually be called with the knot tied between this(amt|bal)width and

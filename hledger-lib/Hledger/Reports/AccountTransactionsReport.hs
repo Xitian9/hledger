@@ -185,7 +185,7 @@ accountTransactionsReportItem reportq thisacctq signfn bal torig = balItem
                   otheracctstr | thisacctq == None  = summarisePostingAccounts reportps     -- no current account ? summarise all matched postings
                                | numotheraccts == 0 = summarisePostingAccounts thisacctps   -- only postings to current account ? summarise those
                                | otherwise          = summarisePostingAccounts otheracctps  -- summarise matched postings to other account(s)
-                  a = signfn . negateMixedAmount $ foldMap' pamount thisacctps
+                  a = signfn . negateMixedAmount $ foldMap' (mixed.pamount) thisacctps
                   b = bal <> a
 
 -- | What is the transaction's date in the context of a particular account

@@ -33,7 +33,7 @@ $if elem CapAdd caps
             <a href="@?{acctlink acc}##{tindex torig}" title="#{acc}">
               #{elideAccountName 40 acc}
           <td .amount style="text-align:right;">
-            ^{mixedAmountAsHtml amt}
+            ^{mixedAmountAsHtml $ mixed amt}
 
 $if elem CapAdd caps
   ^{addModal AddR j today}

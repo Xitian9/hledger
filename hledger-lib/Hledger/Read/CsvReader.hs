@@ -944,7 +944,7 @@ transactionFromCsvRecord sourcepos rules record = t
                       fromMaybe False (mamount >>= isNegativeMixedAmount) = unknownIncomeAccount
                     | otherwise = acct
          ,let p = nullposting{paccount          = accountNameWithoutPostingType acct'
-                             ,pamount           = fromMaybe missingmixedamt mamount
+                             ,pamount           = maybe [missingamt] amounts mamount
                              ,ptransaction      = Just t
                              ,pbalanceassertion = mkBalanceAssertion rules record <$> mbalance
                              ,pcomment          = comment

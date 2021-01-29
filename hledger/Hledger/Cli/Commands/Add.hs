@@ -235,7 +235,7 @@ confirmedTransactionWizard prevInput es@EntryState{..} stack@(currentStage : _) 
   EnterAmountAndComment txnParams account -> amountAndCommentWizard prevInput es >>= \case
     Just (amount, comment) -> do
       let posting = nullposting{paccount=T.pack $ stripbrackets account
-                               ,pamount=Mixed [amount]
+                               ,pamount=[amount]
                                ,pcomment=comment
                                ,ptype=accountNamePostingType $ T.pack account
                                }
@@ -336,10 +336,10 @@ amountAndCommentWizard PrevInput{..} EntryState{..} = do
               , all sameamount $ zip esPostings ps
               )
               where
-                sameamount (p1,p2) = mixedAmountUnstyled (pamount p1) == mixedAmountUnstyled (pamount p2)
+                sameamount (p1,p2) = map amountUnstyled (pamount p1) == map amountUnstyled (pamount p2)
       def = case (esArgs, mhistoricalp, followedhistoricalsofar) of
               (d:_,_,_)                                             -> d
-              (_,Just hp,True)                                      -> showamt . amounts $ pamount hp
+              (_,Just hp,True)                                      -> showamt $ pamount hp
               _  | pnum > 1 && not (mixedAmountLooksZero balancingamt) -> showamt balancingamtfirstcommodity
               _                                                     -> ""
   retryMsg "A valid hledger amount is required. Eg: 1, $2, 3 EUR, \"4 red apples\"." $
@@ -362,7 +362,7 @@ amountAndCommentWizard PrevInput{..} EntryState{..} = do
         c <- T.pack <$> fromMaybe "" `fmap` optional (char ';' >> many anySingle)
         -- eof
         return (a,c)
-      balancingamt = negateMixedAmount . foldMap' pamount $ filter isReal esPostings
+      balancingamt = negateMixedAmount . foldMap' (mixed . pamount) $ filter isReal esPostings
       balancingamtfirstcommodity = take 1 $ amounts balancingamt
       showamt = wbUnpack . showAmountsB noColour . map (amountSetPrecision
                   -- what should this be ?

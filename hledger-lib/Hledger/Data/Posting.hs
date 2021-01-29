@@ -100,7 +100,7 @@ nullposting = Posting
                 ,pdate2=Nothing
                 ,pstatus=Unmarked
                 ,paccount=""
-                ,pamount=nullmixedamt
+                ,pamount=[]
                 ,pcomment=""
                 ,ptype=RegularPosting
                 ,ptags=[]
@@ -114,7 +114,7 @@ posting = nullposting
 
 -- | Make a posting to an account.
 post :: AccountName -> Amount -> Posting
-post acc amt = posting {paccount=acc, pamount=Mixed [amt]}
+post acc amt = posting {paccount=acc, pamount=[amt]}
 
 -- | Make a virtual (unbalanced) posting to an account.
 vpost :: AccountName -> Amount -> Posting
@@ -122,7 +122,7 @@ vpost acc amt = (post acc amt){ptype=VirtualPosting}
 
 -- | Make a posting to an account, maybe with a balance assertion.
 post' :: AccountName -> Amount -> Maybe BalanceAssertion -> Posting
-post' acc amt ass = posting {paccount=acc, pamount=Mixed [amt], pbalanceassertion=ass}
+post' acc amt ass = posting {paccount=acc, pamount=[amt], pbalanceassertion=ass}
 
 -- | Make a virtual (unbalanced) posting to an account, maybe with a balance assertion.
 vpost' :: AccountName -> Amount -> Maybe BalanceAssertion -> Posting
@@ -171,7 +171,7 @@ showPosting p@Posting{paccount=a,pamount=amt,ptype=t} =
                           BalancedVirtualPosting -> (wrap "[" "]", acctnamewidth-2)
                           VirtualPosting         -> (wrap "(" ")", acctnamewidth-2)
                           _                      -> (id,acctnamewidth)
-      showamount = wbUnpack . showMixedAmountB noColour{displayMinWidth=Just 12}
+      showamount = wbUnpack . showAmountsB noColour{displayMinWidth=Just 12}
 
 
 showComment :: Text -> Text
@@ -187,7 +187,7 @@ isBalancedVirtual :: Posting -> Bool
 isBalancedVirtual p = ptype p == BalancedVirtualPosting
 
 hasAmount :: Posting -> Bool
-hasAmount = (/= missingmixedamt) . pamount
+hasAmount = (/= [missingamt]) . pamount
 
 hasBalanceAssignment :: Posting -> Bool
 hasBalanceAssignment p = not (hasAmount p) && isJust (pbalanceassertion p)
@@ -197,11 +197,11 @@ accountNamesFromPostings :: [Posting] -> S.Set AccountName
 accountNamesFromPostings = S.fromList . map paccount
 
 sumPostings :: [Posting] -> MixedAmount
-sumPostings = foldMap' pamount
+sumPostings = foldMap' (mixed . pamount)
 
 -- | Remove all prices of a posting
 removePrices :: Posting -> Posting
-removePrices p = p{ pamount = Mixed $ remove <$> amounts (pamount p) }
+removePrices p = p{ pamount = map remove $ pamount p }
   where remove a = a { aprice = Nothing }
 
 -- | Get a posting's (primary) date - it's own primary date if specified,
@@ -257,7 +257,7 @@ isPostingInDateSpan' PrimaryDate   s = spanContainsDate s . postingDate
 isPostingInDateSpan' SecondaryDate s = spanContainsDate s . postingDate2
 
 isEmptyPosting :: Posting -> Bool
-isEmptyPosting = mixedAmountLooksZero . pamount
+isEmptyPosting = mixedAmountLooksZero . mixed . pamount
 
 -- AccountName stuff that depends on PostingType
 
@@ -337,22 +337,22 @@ aliasReplace (RegexAlias re repl) a =
 -- See amountApplyValuation and amountCost.
 postingApplyCostValuation :: PriceOracle -> M.Map CommoditySymbol AmountStyle -> Day -> Day -> Costing -> Maybe ValuationType -> Posting -> Posting
 postingApplyCostValuation priceoracle styles periodlast today cost v p =
-    postingTransformAmount (mixedAmountApplyCostValuation priceoracle styles periodlast today (postingDate p) cost v) p
+    postingTransformAmount (amountApplyCostValuation priceoracle styles periodlast today (postingDate p) cost v) p
 
 -- | Apply a specified valuation to this posting's amount, using the
 -- provided price oracle, commodity styles, and reference dates.
 -- See amountApplyValuation.
 postingApplyValuation :: PriceOracle -> M.Map CommoditySymbol AmountStyle -> Day -> Day -> ValuationType -> Posting -> Posting
 postingApplyValuation priceoracle styles periodlast today v p =
-    postingTransformAmount (mixedAmountApplyValuation priceoracle styles periodlast today (postingDate p) v) p
+    postingTransformAmount (amountApplyValuation priceoracle styles periodlast today (postingDate p) v) p
 
 -- | Convert this posting's amount to cost, and apply the appropriate amount styles.
 postingToCost :: M.Map CommoditySymbol AmountStyle -> Posting -> Posting
-postingToCost styles = postingTransformAmount (styleMixedAmount styles . mixedAmountCost)
+postingToCost styles = postingTransformAmount (styleAmount styles . amountCost)
 
 -- | Apply a transform function to this posting's amount.
-postingTransformAmount :: (MixedAmount -> MixedAmount) -> Posting -> Posting
-postingTransformAmount f p@Posting{pamount=a} = p{pamount=f a}
+postingTransformAmount :: (Amount -> Amount) -> Posting -> Posting
+postingTransformAmount f p@Posting{pamount=a} = p{pamount=map f a}
 
 -- | Join two parts of a comment, eg a tag and another tag, or a tag
 -- and a non-tag, on a single line. Interpolates a comma and space

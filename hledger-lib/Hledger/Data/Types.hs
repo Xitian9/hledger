@@ -299,7 +299,7 @@ data Posting = Posting {
       pdate2            :: Maybe Day,         -- ^ this posting's secondary date, if different from the transaction's
       pstatus           :: Status,
       paccount          :: AccountName,
-      pamount           :: MixedAmount,
+      pamount           :: [Amount],
       pcomment          :: Text,              -- ^ this posting's comment lines, as a single non-indented multi-line string
       ptype             :: PostingType,
       ptags             :: [Tag],                   -- ^ tag names and values, extracted from the comment
