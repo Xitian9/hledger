@@ -100,7 +100,9 @@ module Hledger.Data.Amount (
   mixedFromAmount,
   mixedAmountAddAmount,
   mixedAmountAddAmounts,
+  mixedAmountAddAmounts',
   amounts,
+  amountsRaw,
   filterMixedAmount,
   filterMixedAmountByCommodity,
   mapMixedAmount,
@@ -144,13 +146,11 @@ import Control.Monad (foldM)
 import Data.Decimal (DecimalRaw(..), decimalPlaces, normalizeDecimal, roundTo)
 import Data.Default (Default(..))
 import Data.Foldable (toList)
-import Data.List (intercalate, intersperse, mapAccumL, partition)
+import Data.List (foldl', intercalate, intersperse, mapAccumL, partition)
 import Data.List.NonEmpty (NonEmpty(..), nonEmpty)
 import qualified Data.Map.Strict as M
-import Data.Maybe (fromMaybe)
-#if !(MIN_VERSION_base(4,11,0))
+import Data.Maybe (fromMaybe, isNothing)
 import Data.Semigroup (Semigroup(..))
-#endif
 import qualified Data.Text as T
 import qualified Data.Text.Lazy.Builder as TB
 import Data.Word (Word8)
@@ -573,25 +573,35 @@ canonicaliseAmount styles a@Amount{acommodity=c, astyle=s} = a{astyle=s'}
 -- MixedAmount
 
 instance Semigroup MixedAmount where
-  Mixed as <> Mixed bs = normaliseMixedAmount . Mixed $ as ++ bs
+  Mixed a <> Mixed b = Mixed $ M.unionWith sumSimilarAmountsUsingFirstPrice a b
+  sconcat = Mixed . M.unionsWith sumSimilarAmountsUsingFirstPrice . fmap (\(Mixed a) -> a)
+  stimes n = multiplyMixedAmount (fromIntegral n)
 
 instance Monoid MixedAmount where
   mempty = nullmixedamt
+  mconcat = Mixed . M.unionsWith sumSimilarAmountsUsingFirstPrice . map (\(Mixed a) -> a)
 #if !(MIN_VERSION_base(4,11,0))
   mappend = (<>)
 #endif
 
 instance Num MixedAmount where
-    fromInteger i = Mixed [fromInteger i]
+    fromInteger = mixedFromAmount . fromInteger
     negate = negateMixedAmount
     (+)    = (<>)
     (*)    = error' "error, mixed amounts do not support multiplication" -- PARTIAL:
     abs    = error' "error, mixed amounts do not support abs"
     signum = error' "error, mixed amounts do not support signum"
 
+-- | Find the key used for an Amount within MixedAmount.
+amountKey :: Amount -> MixedAmountKey
+amountKey Amount{acommodity=c,aprice=p} = (c, priceKey <$> p)
+  where
+    priceKey (UnitPrice  x) = (acommodity x, Just $ aquantity x)
+    priceKey (TotalPrice x) = (acommodity x, Nothing)
+
 -- | The empty mixed amount.
 nullmixedamt :: MixedAmount
-nullmixedamt = Mixed []
+nullmixedamt = Mixed mempty
 
 -- | A zero mixed amount.
 zeromixedamt :: MixedAmount
@@ -601,24 +611,28 @@ zeromixedamt = mixedFromAmount nullamt
 missingmixedamt :: MixedAmount
 missingmixedamt = mixedFromAmount missingamt
 
--- | Convert amounts in various commodities into a normalised MixedAmount.
-mixed :: [Amount] -> MixedAmount
-mixed = normaliseMixedAmount . Mixed
+-- | Convert amounts in various commodities into a mixed amount.
+mixed :: Foldable t => t Amount -> MixedAmount
+mixed = mixedAmountAddAmounts' nullmixedamt
 
 -- | Construct a mixed amount from a single amount.
 mixedFromAmount :: Amount -> MixedAmount
-mixedFromAmount = Mixed . pure
+mixedFromAmount a = Mixed $ M.singleton (amountKey a) a
 
 -- | Add an Amount to a MixedAmount.
 mixedAmountAddAmount :: MixedAmount -> Amount -> MixedAmount
-mixedAmountAddAmount (Mixed as) a = normaliseMixedAmount . Mixed $ a:as
+mixedAmountAddAmount (Mixed ma) a = Mixed $
+    M.insertWith sumSimilarAmountsUsingFirstPrice (amountKey a) a ma
 
--- | Add a collection of Amounts to a MixedAmount.
-mixedAmountAddAmounts :: MixedAmount -> [Amount] -> MixedAmount
-mixedAmountAddAmounts (Mixed as) amts = normaliseMixedAmount . Mixed $ amts ++ as
+-- | Add a list of Amounts to a MixedAmount.
+mixedAmountAddAmounts :: Foldable t => MixedAmount -> t Amount -> MixedAmount
+mixedAmountAddAmounts = foldr (flip mixedAmountAddAmount)
 
+-- | Add a list of Amounts to a MixedAmount, consuming the list strictly.
+mixedAmountAddAmounts' :: Foldable t => MixedAmount -> t Amount -> MixedAmount
+mixedAmountAddAmounts' = foldl' mixedAmountAddAmount
 
--- | Simplify a mixed amount's component amounts:
+-- | Get a mixed amount's component amounts.
 --
 -- * amounts in the same commodity are combined unless they have different prices or total prices
 --
@@ -630,34 +644,32 @@ mixedAmountAddAmounts (Mixed as) amts = normaliseMixedAmount . Mixed $ amts ++ a
 --
 -- * the special "missing" mixed amount remains unchanged
 --
-normaliseMixedAmount :: MixedAmount -> MixedAmount
-normaliseMixedAmount = normaliseHelper False
-
-normaliseHelper :: Bool -> MixedAmount -> MixedAmount
-normaliseHelper squashprices (Mixed as)
-  | missingkey `M.member` amtMap = missingmixedamt -- missingamt should always be alone, but detect it even if not
-  | M.null nonzeros= Mixed [newzero]
-  | otherwise      = Mixed $ toList nonzeros
+amounts :: MixedAmount -> [Amount]
+amounts (Mixed ma)
+  | missingkey `M.member` ma = [missingamt]  -- missingamt should always be alone, but detect it even if not
+  | M.null nonzeros          = [newzero]
+  | otherwise                = toList nonzeros
   where
     newzero = maybe nullamt snd . M.lookupMin $ M.filter (not . T.null . acommodity) zeros
-    (zeros, nonzeros) = M.partition amountIsZero amtMap
-    amtMap = foldr (\a -> M.insertWith sumSimilarAmountsUsingFirstPrice (key a) a) mempty as
-    key Amount{acommodity=c,aprice=p} = (c, if squashprices then Nothing else priceKey <$> p)
-      where
-        priceKey (UnitPrice  x) = (acommodity x, Just $ aquantity x)
-        priceKey (TotalPrice x) = (acommodity x, Nothing)
-    missingkey = key missingamt
+    (zeros, nonzeros) = M.partition amountIsZero ma
+    missingkey = amountKey missingamt
 
--- | Like normaliseMixedAmount, but combine each commodity's amounts
--- into just one by throwing away all prices except the first. This is
--- only used as a rendering helper, and could show a misleading price.
+-- | Get a mixed amount's component amounts without normalising zero and missing
+-- amounts.
+amountsRaw :: MixedAmount -> [Amount]
+amountsRaw (Mixed ma) = toList ma
+
+normaliseMixedAmount :: MixedAmount -> MixedAmount
+normaliseMixedAmount = id  -- XXX Remove
+
+-- | Strip prices from a MixedAmount.
 normaliseMixedAmountSquashPricesForDisplay :: MixedAmount -> MixedAmount
-normaliseMixedAmountSquashPricesForDisplay = normaliseHelper True
+normaliseMixedAmountSquashPricesForDisplay = mixedAmountStripPrices  -- XXX Remove
 
 -- | Unify a MixedAmount to a single commodity value if possible.
--- Like normaliseMixedAmount, this consolidates amounts of the same commodity
--- and discards zero amounts; but this one insists on simplifying to
--- a single commodity, and will return Nothing if this is not possible.
+-- This consolidates amounts of the same commodity and discards zero
+-- amounts; but this one insists on simplifying to a single commodity,
+-- and will return Nothing if this is not possible.
 unifyMixedAmount :: MixedAmount -> Maybe Amount
 unifyMixedAmount = foldM combine 0 . amounts
   where
@@ -685,39 +697,40 @@ sumSimilarAmountsUsingFirstPrice a b = (a + b){aprice=p}
 -- sumSimilarAmountsNotingPriceDifference [] = nullamt
 -- sumSimilarAmountsNotingPriceDifference as = undefined
 
--- | Get a mixed amount's component amounts.
-amounts :: MixedAmount -> [Amount]
-amounts (Mixed as) = as
-
 -- | Filter a mixed amount's component amounts by a predicate.
 filterMixedAmount :: (Amount -> Bool) -> MixedAmount -> MixedAmount
-filterMixedAmount p (Mixed as) = Mixed $ filter p as
+filterMixedAmount p (Mixed ma) = Mixed $ M.filter p ma
 
 -- | Return an unnormalised MixedAmount containing exactly one Amount
 -- with the specified commodity and the quantity of that commodity
 -- found in the original. NB if Amount's quantity is zero it will be
 -- discarded next time the MixedAmount gets normalised.
 filterMixedAmountByCommodity :: CommoditySymbol -> MixedAmount -> MixedAmount
-filterMixedAmountByCommodity c (Mixed as) = Mixed as'
-  where
-    as' = case filter ((==c) . acommodity) as of
-            []   -> [nullamt{acommodity=c}]
-            as'' -> [sum as'']
+filterMixedAmountByCommodity c (Mixed ma)
+  | M.null ma' = mixedFromAmount nullamt{acommodity=c}
+  | otherwise  = Mixed ma'
+  where ma' = M.filterWithKey (\k _ -> (==c) $ fst k) ma
 
 -- | Apply a transform to a mixed amount's component 'Amount's.
 mapMixedAmount :: (Amount -> Amount) -> MixedAmount -> MixedAmount
-mapMixedAmount f (Mixed as) = Mixed $ map f as
+mapMixedAmount f (Mixed ma) = mixed . map f $ toList ma
+
+-- | Apply a transform to a mixed amount's component 'Amount's, which does not
+-- affect the key of the amount (i.e. doesn't change the commodity, price
+-- commodity, or unit price amount). This condition is not checked.
+mapMixedAmountUnsafe :: (Amount -> Amount) -> MixedAmount -> MixedAmount
+mapMixedAmountUnsafe f (Mixed ma) = Mixed $ M.map f ma  -- Use M.map instead of fmap to maintain strictness
 
 -- | Convert all component amounts to cost/selling price where
 -- possible (see amountCost).
 mixedAmountCost :: MixedAmount -> MixedAmount
 mixedAmountCost = mapMixedAmount amountCost
 
--- | Divide a mixed amount's quantities (and total prices, if any) by a constant.
+-- | Divide a mixed amount's quantities by a constant.
 divideMixedAmount :: Quantity -> MixedAmount -> MixedAmount
 divideMixedAmount n = transformMixedAmount (/n)
 
--- | Multiply a mixed amount's quantities (and total prices, if any) by a constant.
+-- | Multiply a mixed amount's quantities by a constant.
 multiplyMixedAmount :: Quantity -> MixedAmount -> MixedAmount
 multiplyMixedAmount n = transformMixedAmount (*n)
 
@@ -727,7 +740,7 @@ negateMixedAmount = transformMixedAmount negate
 
 -- | Apply a function to a mixed amount's quantities (and its total prices, if it has any).
 transformMixedAmount :: (Quantity -> Quantity) -> MixedAmount -> MixedAmount
-transformMixedAmount f = mapMixedAmount (transformAmount f)
+transformMixedAmount f = mapMixedAmountUnsafe (transformAmount f)
 
 -- | Calculate the average of some mixed amounts.
 averageMixedAmounts :: [MixedAmount] -> MixedAmount
@@ -738,7 +751,7 @@ averageMixedAmounts as = fromIntegral (length as) `divideMixedAmount` mconcat as
 -- Ie when normalised, are all individual commodity amounts negative ?
 isNegativeMixedAmount :: MixedAmount -> Maybe Bool
 isNegativeMixedAmount m =
-  case amounts $ normaliseMixedAmountSquashPricesForDisplay m of
+  case amounts $ mixedAmountStripPrices m of
     []  -> Just False
     [a] -> Just $ isNegativeAmount a
     as | all isNegativeAmount as -> Just True
@@ -749,21 +762,21 @@ isNegativeMixedAmount m =
 -- i.e. does it have zero quantity with no price, zero quantity with a total price (which is also zero),
 -- and zero quantity for each unit price?
 mixedAmountLooksZero :: MixedAmount -> Bool
-mixedAmountLooksZero = all amountLooksZero . amounts . normaliseMixedAmountSquashPricesForDisplay
+mixedAmountLooksZero = all amountLooksZero . amounts . mixedAmountStripPrices
 
 -- | Is this mixed amount exactly to be zero, ignoring its display precision?
 -- i.e. does it have zero quantity with no price, zero quantity with a total price (which is also zero),
 -- and zero quantity for each unit price?
 mixedAmountIsZero :: MixedAmount -> Bool
-mixedAmountIsZero = all amountIsZero . amounts . normaliseMixedAmountSquashPricesForDisplay
+mixedAmountIsZero = all amountIsZero . amounts . mixedAmountStripPrices
 
 -- -- | MixedAmount derived Eq instance in Types.hs doesn't know that we
 -- -- want $0 = EUR0 = 0. Yet we don't want to drag all this code over there.
 -- -- For now, use this when cross-commodity zero equality is important.
 -- mixedAmountEquals :: MixedAmount -> MixedAmount -> Bool
 -- mixedAmountEquals a b = amounts a' == amounts b' || (mixedAmountLooksZero a' && mixedAmountLooksZero b')
---     where a' = normaliseMixedAmountSquashPricesForDisplay a
---           b' = normaliseMixedAmountSquashPricesForDisplay b
+--     where a' = mixedAmountStripPrices a
+--           b' = mixedAmountStripPrices b
 
 -- | Given a map of standard commodity display styles, apply the
 -- appropriate one to each individual amount.
@@ -835,8 +848,8 @@ showMixedAmountDebug m | m == missingmixedamt = "(missing)"
 -- - If displayed on multiple lines, any Amounts longer than the
 --   maximum width will be elided.
 showMixedAmountB :: AmountDisplayOpts -> MixedAmount -> WideBuilder
-showMixedAmountB opts = showAmountsB opts . amounts
-    . (if displayPrice opts then id else mixedAmountStripPrices) . normaliseMixedAmountSquashPricesForDisplay
+showMixedAmountB opts =
+    showAmountsB opts . amounts . if displayPrice opts then id else mixedAmountStripPrices
 
 data AmountDisplay = AmountDisplay
   { adBuilder :: !WideBuilder  -- ^ String representation of the Amount
@@ -887,8 +900,11 @@ mixedAmountSetPrecision p = mapMixedAmount (amountSetPrecision p)
 mixedAmountSetFullPrecision :: MixedAmount -> MixedAmount
 mixedAmountSetFullPrecision = mapMixedAmount amountSetFullPrecision
 
+-- | Remove all prices from a MixedAmount.
 mixedAmountStripPrices :: MixedAmount -> MixedAmount
-mixedAmountStripPrices = mapMixedAmount (\a -> a{aprice=Nothing})
+mixedAmountStripPrices (Mixed ma) =
+    foldl' (\m a -> mixedAmountAddAmount m a{aprice=Nothing}) (Mixed noPrices) withPrices
+  where (noPrices, withPrices) = M.partitionWithKey (\k _ -> isNothing $ snd k) ma
 
 -- | Canonicalise a mixed amount's display styles using the provided commodity style map.
 canonicaliseMixedAmount :: M.Map CommoditySymbol AmountStyle -> MixedAmount -> MixedAmount
@@ -966,22 +982,22 @@ tests_Amount = tests "Amount" [
       showMixedAmountWithoutPrice False (mixedFromAmount (a)) @?= "$1.00"
       showMixedAmountWithoutPrice False (mixed [a, -a]) @?= "0"
 
-    ,tests "normaliseMixedAmount" [
+    ,tests "amounts" [
        test "a missing amount overrides any other amounts" $
-        amounts (normaliseMixedAmount $ mixed [usd 1, missingamt]) @?= [missingamt]
+        amounts (mixed [usd 1, missingamt]) @?= [missingamt]
       ,test "unpriced same-commodity amounts are combined" $
-        amounts (normaliseMixedAmount $ mixed [usd 0, usd 2]) @?= [usd 2]
+        amounts (mixed [usd 0, usd 2]) @?= [usd 2]
       ,test "amounts with same unit price are combined" $
-        amounts (normaliseMixedAmount $ mixed [usd 1 `at` eur 1, usd 1 `at` eur 1]) @?= [usd 2 `at` eur 1]
+        amounts (mixed [usd 1 `at` eur 1, usd 1 `at` eur 1]) @?= [usd 2 `at` eur 1]
       ,test "amounts with different unit prices are not combined" $
-        amounts (normaliseMixedAmount $ mixed [usd 1 `at` eur 1, usd 1 `at` eur 2]) @?= [usd 1 `at` eur 1, usd 1 `at` eur 2]
+        amounts (mixed [usd 1 `at` eur 1, usd 1 `at` eur 2]) @?= [usd 1 `at` eur 1, usd 1 `at` eur 2]
       ,test "amounts with total prices are combined" $
-        amounts (normaliseMixedAmount $ mixed [usd 1 @@ eur 1, usd 1 @@ eur 1]) @?= [usd 2 @@ eur 2]
+        amounts (mixed [usd 1 @@ eur 1, usd 1 @@ eur 1]) @?= [usd 2 @@ eur 2]
     ]
 
-    ,test "normaliseMixedAmountSquashPricesForDisplay" $ do
-       amounts (normaliseMixedAmountSquashPricesForDisplay nullmixedamt) @?= [nullamt]
-       assertBool "" $ mixedAmountLooksZero $ normaliseMixedAmountSquashPricesForDisplay
+    ,test "mixedAmountStripPrices" $ do
+       amounts (mixedAmountStripPrices nullmixedamt) @?= [nullamt]
+       assertBool "" $ mixedAmountLooksZero $ mixedAmountStripPrices
         (mixed [usd 10
                ,usd 10 @@ eur 7
                ,usd (-10)
