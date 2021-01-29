@@ -89,7 +89,7 @@ close CliOpts{rawopts_=rawopts, reportspec_=rspec} j = do
 
     -- the balances to close
     (acctbals,_) = balanceReport rspec_ j
-    totalamt = sum $ map (\(_,_,_,b) -> normalise b) acctbals
+    totalamt = foldMap' (\(_,_,_,b) -> normalise b) acctbals
 
     -- since balance assertion amounts are required to be exact, the
     -- amounts in opening/closing transactions should be too (#941, #1137)

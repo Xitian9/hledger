@@ -471,9 +471,9 @@ inferBalancingAmount styles t@Transaction{tpostings=ps}
         in Right (t{tpostings=map fst psandinferredamts}, inferredacctsandamts)
   where
     (amountfulrealps, amountlessrealps) = partition hasAmount (realPostings t)
-    realsum = sumStrict $ map pamount amountfulrealps
+    realsum = foldMap' pamount amountfulrealps
     (amountfulbvps, amountlessbvps) = partition hasAmount (balancedVirtualPostings t)
-    bvsum = sumStrict $ map pamount amountfulbvps
+    bvsum = foldMap' pamount amountfulbvps
 
     inferamount :: Posting -> (Posting, Maybe MixedAmount)
     inferamount p =
@@ -490,7 +490,7 @@ inferBalancingAmount styles t@Transaction{tpostings=ps}
               -- Inferred amounts are converted to cost.
               -- Also ensure the new amount has the standard style for its commodity
               -- (since the main amount styling pass happened before this balancing pass);
-              a' = styleMixedAmount styles $ normaliseMixedAmount $ mixedAmountCost (-a)
+              a' = styleMixedAmount styles . normaliseMixedAmount . mixedAmountCost $ negateMixedAmount a
 
 -- | Infer prices for this transaction's posting amounts, if needed to make
 -- the postings balance, and if possible. This is done once for the real
@@ -545,7 +545,7 @@ priceInferrerFor t pt = inferprice
     pmixedamounts  = map pamount postings
     pamounts       = concatMap amounts pmixedamounts
     pcommodities   = map acommodity pamounts
-    sumamounts     = amounts $ sumStrict pmixedamounts -- sum normalises to one amount per commodity & price
+    sumamounts     = amounts $ foldMap' id pmixedamounts -- sum normalises to one amount per commodity & price
     sumcommodities = map acommodity sumamounts
     sumprices      = filter (/=Nothing) $ map aprice sumamounts
     caninferprices = length sumcommodities == 2 && null sumprices

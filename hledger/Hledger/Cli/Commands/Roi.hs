@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP               #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ParallelListComp  #-}
 {-# LANGUAGE TemplateHaskell   #-}
@@ -19,6 +20,9 @@ import Data.Time.Calendar
 import Text.Printf
 import Data.Function (on)
 import Data.List
+#if !(MIN_VERSION_base(4,11,0))
+import Data.Semigroup ((<>))
+#endif
 import Numeric.RootFinding
 import Data.Decimal
 import qualified Data.Text as T
@@ -133,14 +137,14 @@ roi CliOpts{rawopts_=rawopts, reportspec_=rspec@ReportSpec{rsOpts=ReportOpts{..}
 
     irr <- internalRateOfReturn showCashFlow prettyTables thisSpan
     twr <- timeWeightedReturn showCashFlow prettyTables investmentsQuery trans mixedAmountValue thisSpan
-    let cashFlowAmt = negate $ sum $ map snd cashFlow
+    let cashFlowAmt = negateMixedAmount $ foldMap snd cashFlow
     let smallIsZero x = if abs x < 0.01 then 0.0 else x
     return [ showDate spanBegin
            , showDate (addDays (-1) spanEnd)
            , T.pack $ showMixedAmount valueBefore
            , T.pack $ showMixedAmount cashFlowAmt
            , T.pack $ showMixedAmount valueAfter
-           , T.pack $ showMixedAmount (valueAfter - (valueBefore + cashFlowAmt))
+           , T.pack $ showMixedAmount (valueAfter <> negateMixedAmount (valueBefore <> cashFlowAmt))
            , T.pack $ printf "%0.2f%%" $ smallIsZero irr
            , T.pack $ printf "%0.2f%%" $ smallIsZero twr ]
 
@@ -165,12 +169,12 @@ timeWeightedReturn showCashFlow prettyTables investmentsQuery trans mixedAmountV
         -- first for processing cash flow. This is why pnl changes are Left
         -- and cashflows are Right
         sort
-        $ (++) (map (\(date,amt) -> (date,Left (-amt))) pnl )
+        $ (++) (map (\(date,amt) -> (date,Left (negateMixedAmount amt))) pnl )
         -- Aggregate all entries for a single day, assuming that intraday interest is negligible
-        $ map (\date_cash -> let (dates, cash) = unzip date_cash in (head dates, Right (sum cash)))
+        $ map (\date_cash -> let (dates, cash) = unzip date_cash in (head dates, Right (mconcat cash)))
         $ groupBy ((==) `on` fst)
         $ sortOn fst
-        $ map (\(d,a) -> (d, negate a))
+        $ map (\(d,a) -> (d, negateMixedAmount a))
         $ cashFlow
 
   let units =
@@ -203,13 +207,13 @@ timeWeightedReturn showCashFlow prettyTables investmentsQuery trans mixedAmountV
   when showCashFlow $ do
     printf "\nTWR cash flow for %s - %s\n" (showDate spanBegin) (showDate (addDays (-1) spanEnd))
     let (dates', amounts) = unzip changes
-        cashflows' = map (either (\_ -> 0) id) amounts
-        pnls' = map (either id (\_ -> 0)) amounts
+        cashflows' = map (either (const zeromixedamt) id) amounts
+        pnls' = map (either id (const zeromixedamt)) amounts
         (valuesOnDate',unitsBoughtOrSold', unitPrices', unitBalances') = unzip4 units
         add x lst = if valueBefore/=0 then x:lst else lst
         dates = add spanBegin dates'
         cashflows = add valueBeforeAmt cashflows'
-        pnls = add 0 pnls'
+        pnls = add zeromixedamt pnls'
         unitsBoughtOrSold = add initialUnits unitsBoughtOrSold'
         unitPrices = add initialUnitPrice unitPrices'
         unitBalances = add initialUnits unitBalances'
@@ -236,11 +240,11 @@ timeWeightedReturn showCashFlow prettyTables investmentsQuery trans mixedAmountV
   return annualizedTWR
 
 internalRateOfReturn showCashFlow prettyTables (OneSpan spanBegin spanEnd valueBefore valueAfter cashFlow _pnl) = do
-  let prefix = (spanBegin, negate valueBefore)
+  let prefix = (spanBegin, negateMixedAmount valueBefore)
 
       postfix = (spanEnd, valueAfter)
 
-      totalCF = filter ((/=0) . snd) $ prefix : (sortOn fst cashFlow) ++ [postfix]
+      totalCF = filter ((/=zeromixedamt) . snd) $ prefix : (sortOn fst cashFlow) ++ [postfix]
 
   when showCashFlow $ do
     printf "\nIRR cash flow for %s - %s\n" (showDate spanBegin) (showDate (addDays (-1) spanEnd))
@@ -271,12 +275,12 @@ interestSum referenceDay cf rate = sum $ map go cf
 
 
 calculateCashFlow :: [Transaction] -> Query -> CashFlow
-calculateCashFlow trans query = filter ((/=0).snd) $ map go trans
+calculateCashFlow trans query = filter ((/=zeromixedamt).snd) $ map go trans
     where
     go t = (transactionDate2 t, total [t] query)
 
 total :: [Transaction] -> Query -> MixedAmount
-total trans query = sumPostings $  filter (matchesPosting query) $ concatMap realPostings trans
+total trans query = sumPostings (filter (matchesPosting query) $ concatMap realPostings trans) <> zeromixedamt
 
 unMix :: MixedAmount -> Quantity
 unMix a =

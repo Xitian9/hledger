@@ -92,6 +92,7 @@ module Hledger.Data.Amount (
   canonicaliseAmount,
   -- * MixedAmount
   nullmixedamt,
+  zeromixedamt,
   missingmixedamt,
   mixed,
   amounts,
@@ -106,6 +107,7 @@ module Hledger.Data.Amount (
   mixedAmountCost,
   divideMixedAmount,
   multiplyMixedAmount,
+  negateMixedAmount,
   averageMixedAmounts,
   isNegativeAmount,
   isNegativeMixedAmount,
@@ -143,7 +145,7 @@ import Data.List.NonEmpty (NonEmpty(..), nonEmpty)
 import qualified Data.Map.Strict as M
 import Data.Maybe (fromMaybe)
 #if !(MIN_VERSION_base(4,11,0))
-import Data.Semigroup ((<>))
+import Data.Semigroup (Semigroup(..))
 #endif
 import qualified Data.Text as T
 import qualified Data.Text.Lazy.Builder as TB
@@ -494,10 +496,19 @@ canonicaliseAmount styles a@Amount{acommodity=c, astyle=s} = a{astyle=s'}
 -------------------------------------------------------------------------------
 -- MixedAmount
 
+instance Semigroup MixedAmount where
+  Mixed as <> Mixed bs = normaliseMixedAmount . Mixed $ as ++ bs
+
+instance Monoid MixedAmount where
+  mempty = nullmixedamt
+#if !(MIN_VERSION_base(4,11,0))
+  mappend = (<>)
+#endif
+
 instance Num MixedAmount where
     fromInteger i = Mixed [fromInteger i]
-    negate (Mixed as) = Mixed $ map negate as
-    (+) (Mixed as) (Mixed bs) = normaliseMixedAmount $ Mixed $ as ++ bs
+    negate = negateMixedAmount
+    (+)    = (<>)
     (*)    = error' "error, mixed amounts do not support multiplication" -- PARTIAL:
     abs    = error' "error, mixed amounts do not support abs"
     signum = error' "error, mixed amounts do not support signum"
@@ -505,6 +516,10 @@ instance Num MixedAmount where
 -- | The empty mixed amount.
 nullmixedamt :: MixedAmount
 nullmixedamt = Mixed []
+
+-- | A zero mixed amount.
+zeromixedamt :: MixedAmount
+zeromixedamt = Mixed [0]
 
 -- | A temporary value for parsed transactions which had no amount specified.
 missingmixedamt :: MixedAmount
@@ -611,16 +626,24 @@ mixedAmountCost = mapMixedAmount amountCost
 
 -- | Divide a mixed amount's quantities (and total prices, if any) by a constant.
 divideMixedAmount :: Quantity -> MixedAmount -> MixedAmount
-divideMixedAmount n = mapMixedAmount (divideAmount n)
+divideMixedAmount n = transformMixedAmount (/n)
 
 -- | Multiply a mixed amount's quantities (and total prices, if any) by a constant.
 multiplyMixedAmount :: Quantity -> MixedAmount -> MixedAmount
-multiplyMixedAmount n = mapMixedAmount (multiplyAmount n)
+multiplyMixedAmount n = transformMixedAmount (*n)
+
+-- | Negate mixed amount's quantities (and total prices, if any).
+negateMixedAmount :: MixedAmount -> MixedAmount
+negateMixedAmount = transformMixedAmount negate
+
+-- | Apply a function to a mixed amount's quantities (and its total prices, if it has any).
+transformMixedAmount :: (Quantity -> Quantity) -> MixedAmount -> MixedAmount
+transformMixedAmount f = mapMixedAmount (transformAmount f)
 
 -- | Calculate the average of some mixed amounts.
 averageMixedAmounts :: [MixedAmount] -> MixedAmount
-averageMixedAmounts [] = 0
-averageMixedAmounts as = fromIntegral (length as) `divideMixedAmount` sum as
+averageMixedAmounts [] = zeromixedamt
+averageMixedAmounts as = fromIntegral (length as) `divideMixedAmount` mconcat as
 
 -- | Is this mixed amount negative, if we can tell that unambiguously?
 -- Ie when normalised, are all individual commodity amounts negative ?
@@ -888,18 +911,18 @@ tests_Amount = tests "Amount" [
   ,tests "MixedAmount" [
 
      test "adding mixed amounts to zero, the commodity and amount style are preserved" $
-      sum (map (Mixed . (:[]))
-               [usd 1.25
-               ,usd (-1) `withPrecision` Precision 3
-               ,usd (-0.25)
-               ])
+      foldMap (Mixed . pure)
+        [usd 1.25
+        ,usd (-1) `withPrecision` Precision 3
+        ,usd (-0.25)
+        ]
         @?= Mixed [usd 0 `withPrecision` Precision 3]
 
     ,test "adding mixed amounts with total prices" $ do
-      sum (map (Mixed . (:[]))
-       [usd 1 @@ eur 1
-       ,usd (-2) @@ eur 1
-       ])
+      foldMap (Mixed . pure)
+        [usd 1 @@ eur 1
+        ,usd (-2) @@ eur 1
+        ]
         @?= Mixed [usd (-1) @@ eur 2 ]
 
     ,test "showMixedAmount" $ do
