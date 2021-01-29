@@ -230,7 +230,8 @@ data Amount = Amount {
       aprice      :: !(Maybe AmountPrice)  -- ^ the (fixed, transaction-specific) price for this amount, if any
     } deriving (Eq,Ord,Generic,Show)
 
-newtype MixedAmount = Mixed [Amount] deriving (Eq,Ord,Generic,Show)
+newtype MixedAmount = Mixed (M.Map MixedAmountKey Amount) deriving (Eq,Ord,Generic,Show)
+type MixedAmountKey = (CommoditySymbol, Maybe (CommoditySymbol, Maybe Quantity))
 
 data PostingType = RegularPosting | VirtualPosting | BalancedVirtualPosting
                    deriving (Eq,Show,Generic)

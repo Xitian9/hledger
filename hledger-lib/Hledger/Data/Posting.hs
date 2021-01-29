@@ -197,6 +197,7 @@ hasBalanceAssignment p = not (hasAmount p) && isJust (pbalanceassertion p)
 accountNamesFromPostings :: [Posting] -> [AccountName]
 accountNamesFromPostings = nubSort . map paccount
 
+-- | Sum all amounts from a list of postings.
 sumPostings :: [Posting] -> MixedAmount
 sumPostings = foldl' (\amt p -> maAddAmounts amt $ pamount p) nullmixedamt
 

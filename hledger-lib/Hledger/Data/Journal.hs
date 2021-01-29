@@ -940,13 +940,12 @@ addAmountAndCheckAssertionB p = return p
 -- are ignored; if it is total, they will cause the assertion to fail.
 checkBalanceAssertionB :: Posting -> MixedAmount -> Balancing s ()
 checkBalanceAssertionB p@Posting{pbalanceassertion=Just (BalanceAssertion{baamount,batotal})} actualbal =
-  forM_ assertedamts $ \amt -> checkBalanceAssertionOneCommodityB p amt actualbal
+    forM_ (baamount : otheramts) $ \amt -> checkBalanceAssertionOneCommodityB p amt actualbal
   where
-    assertedamts = baamount : otheramts
-      where
-        assertedcomm = acommodity baamount
-        otheramts | batotal   = map (\a -> a{aquantity=0}) $ amounts $ filterMixedAmount ((/=assertedcomm).acommodity) actualbal
-                  | otherwise = []
+    assertedcomm = acommodity baamount
+    otheramts | batotal   = map (\a -> a{aquantity=0}) . amountsRaw
+                          $ filterMixedAmount ((/=assertedcomm).acommodity) actualbal
+              | otherwise = []
 checkBalanceAssertionB _ _ = return ()
 
 -- | Does this (single commodity) expected balance match the amount of that
@@ -971,7 +970,7 @@ checkBalanceAssertionOneCommodityB p@Posting{paccount=assertedacct} assertedamt 
     else return actualbal
   let
     assertedcomm    = acommodity assertedamt
-    actualbalincomm = headDef 0 $ amounts $ filterMixedAmountByCommodity assertedcomm $ actualbal'
+    actualbalincomm = headDef nullamt . amountsRaw . filterMixedAmountByCommodity assertedcomm $ actualbal'
     pass =
       aquantity
         -- traceWith (("asserted:"++).showAmountDebug)
