@@ -233,7 +233,7 @@ confirmedTransactionWizard prevInput es@EntryState{..} stack@(currentStage : _) 
   EnterAmountAndComment txnParams account -> amountAndCommentWizard prevInput es >>= \case
     Just (amount, comment) -> do
       let posting = nullposting{paccount=T.pack $ stripbrackets account
-                               ,pamount=Mixed [amount]
+                               ,pamount=[amount]
                                ,pcomment=comment
                                ,ptype=accountNamePostingType $ T.pack account
                                }
@@ -334,9 +334,9 @@ amountAndCommentWizard PrevInput{..} EntryState{..} = do
               , all sameamount $ zip esPostings ps
               )
               where
-                sameamount (p1,p2) = mixedAmountUnstyled (pamount p1) == mixedAmountUnstyled (pamount p2)
+                sameamount (p1,p2) = map amountUnstyled (pamount p1) == map amountUnstyled (pamount p2)
       def | (d:_) <- esArgs                                     = d
-          | Just hp <- mhistoricalp, followedhistoricalsofar    = showamt . amounts $ pamount hp
+          | Just hp <- mhistoricalp, followedhistoricalsofar    = showamt $ pamount hp
           | pnum > 1 && not (mixedAmountLooksZero balancingamt) = showamt balancingamtfirstcommodity
           | otherwise                                           = ""
   retryMsg "A valid hledger amount is required. Eg: 1, $2, 3 EUR, \"4 red apples\"." $

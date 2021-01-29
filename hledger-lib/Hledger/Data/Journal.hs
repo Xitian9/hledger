@@ -533,7 +533,7 @@ filterTransactionAmounts q t@Transaction{tpostings=ps} = t{tpostings=map (filter
 
 -- | Filter out all parts of this posting's amount which do not match the query.
 filterPostingAmount :: Query -> Posting -> Posting
-filterPostingAmount q p@Posting{pamount=as} = p{pamount=filterMixedAmount (q `matchesAmount`) as}
+filterPostingAmount q p@Posting{pamount=as} = p{pamount=filter (q `matchesAmount`) as}
 
 filterTransactionPostings :: Query -> Transaction -> Transaction
 filterTransactionPostings q t@Transaction{tpostings=ps} = t{tpostings=filter (q `matchesPosting`) ps}
@@ -548,7 +548,7 @@ journalMapPostings f j@Journal{jtxns=ts} = j{jtxns=map (transactionMapPostings f
 
 -- | Apply a transformation to a journal's posting amounts.
 journalMapPostingAmounts :: (Amount -> Amount) -> Journal -> Journal
-journalMapPostingAmounts f = journalMapPostings (postingTransformAmount (mapMixedAmount f))
+journalMapPostingAmounts f = journalMapPostings (postingTransformAmount f)
 
 {-
 -------------------------------------------------------------------------------
@@ -901,7 +901,7 @@ addOrAssignAmountAndCheckAssertionB :: Posting -> Balancing s Posting
 addOrAssignAmountAndCheckAssertionB p@Posting{paccount=acc, pamount=amt, pbalanceassertion=mba}
   -- an explicit posting amount
   | hasAmount p = do
-      newbal <- addToRunningBalanceB acc amt
+      newbal <- addToRunningBalanceB acc (mixed amt)
       whenM (R.reader bsAssrt) $ checkBalanceAssertionB p newbal
       return p
 
@@ -915,7 +915,7 @@ addOrAssignAmountAndCheckAssertionB p@Posting{paccount=acc, pamount=amt, pbalanc
                      oldbalothercommodities <- filterMixedAmount ((acommodity baamount /=) . acommodity) <$> getRunningBalanceB acc
                      return $ maAddAmount oldbalothercommodities baamount
       diff <- (if bainclusive then setInclusiveRunningBalanceB else setRunningBalanceB) acc newbal
-      let p' = p{pamount=diff, poriginal=Just $ originalPosting p}
+      let p' = p{pamount=amounts diff, poriginal=Just $ originalPosting p}
       whenM (R.reader bsAssrt) $ checkBalanceAssertionB p' newbal
       return p'
 
@@ -929,7 +929,7 @@ addOrAssignAmountAndCheckAssertionB p@Posting{paccount=acc, pamount=amt, pbalanc
 -- need to see the balance as it stands after each individual posting.
 addAmountAndCheckAssertionB :: Posting -> Balancing s Posting
 addAmountAndCheckAssertionB p | hasAmount p = do
-  newbal <- addToRunningBalanceB (paccount p) (pamount p)
+  newbal <- addToRunningBalanceB (paccount p) (mixed $ pamount p)
   whenM (R.reader bsAssrt) $ checkBalanceAssertionB p newbal
   return p
 addAmountAndCheckAssertionB p = return p
@@ -1068,7 +1068,7 @@ journalApplyCommodityStyles j@Journal{jtxns=ts, jpricedirectives=pds} =
                 ,jpricedirectives=map fixpricedirective pds
                 }
         fixtransaction t@Transaction{tpostings=ps} = t{tpostings=map fixposting ps}
-        fixposting p = p{pamount=styleMixedAmount styles $ pamount p
+        fixposting p = p{pamount=map (styleAmount styles) $ pamount p
                         ,pbalanceassertion=fixbalanceassertion <$> pbalanceassertion p}
         -- balance assertion amounts are always displayed (by print) at full precision, per docs
         fixbalanceassertion ba = ba{baamount=styleAmountExceptPrecision styles $ baamount ba}
@@ -1182,8 +1182,8 @@ journalInferMarketPricesFromTransactions j =
 postingInferredmarketPrice :: Posting -> Maybe MarketPrice
 postingInferredmarketPrice p@Posting{pamount} =
   -- convert any total prices to unit prices
-  case amounts $ mixedAmountTotalPriceToUnitPrice pamount of
-    Amount{acommodity=fromcomm, aprice = Just (UnitPrice Amount{acommodity=tocomm, aquantity=rate})}:_ ->
+  case map amountTotalPriceToUnitPrice pamount of
+    ( Amount{acommodity=fromcomm, aprice = Just (UnitPrice Amount{acommodity=tocomm, aquantity=rate})} : _) ->
       Just MarketPrice {
          mpdate = postingDate p
         ,mpfrom = fromcomm
@@ -1234,7 +1234,7 @@ journalStyleInfluencingAmounts j =
   catMaybes $ concat [
    [mdefaultcommodityamt]
   ,map (Just . pdamount) $ jpricedirectives j
-  ,map Just $ concatMap amounts $ map pamount $ journalPostings j
+  ,map Just . concatMap pamount $ journalPostings j
   ]
   where
     -- D's amount style isn't actually stored as an amount, make it into one
@@ -1561,7 +1561,7 @@ tests_Journal = tests "Journal" [
             ]}
       assertRight ej
       let Right j = ej
-      (jtxns j & head & tpostings & head & pamount) @?= mixedAmount (num 1)
+      (jtxns j & head & tpostings & head & pamount) @?= [num 1]
 
     ,test "same-day-1" $ do
       assertRight $ journalBalanceTransactions True $

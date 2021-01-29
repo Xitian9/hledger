@@ -181,7 +181,7 @@ postingToCSV p =
     let credit = if q < 0 then showamt $ negate a_ else "" in
     let debit  = if q >= 0 then showamt a_ else "" in
     [account, amount, c, credit, debit, status, comment])
-   . amounts $ pamount p
+    $ pamount p
   where
     status = T.pack . show $ pstatus p
     account = showAccountName Nothing (ptype p) (paccount p)

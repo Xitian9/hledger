@@ -171,7 +171,7 @@ postingsReportItems ((p,menddate):ps) (pprev,menddateprev) wd d b runningcalcfn 
     isdifferentdate = case wd of PrimaryDate   -> postingDate p  /= postingDate pprev
                                  SecondaryDate -> postingDate2 p /= postingDate2 pprev
     p' = p{paccount= clipOrEllipsifyAccountName d $ paccount p}
-    b' = runningcalcfn itemnum b (pamount p)
+    b' = runningcalcfn itemnum b (mixed $ pamount p)
 
 -- | Generate one postings report line item, containing the posting,
 -- the current running balance, and optionally the posting date and/or
@@ -220,9 +220,9 @@ summarisePostingsInDateSpan (DateSpan b e) wd mdepth showempty ps
     e' = fromMaybe (maybe (addDays 1 nulldate) postingdate $ lastMay ps) e
     summaryp = nullposting{pdate=Just b'}
     clippedanames = nub $ map (clipAccountName mdepth) anames
-    summaryps | mdepth == Just 0 = [summaryp{paccount="...",pamount=sumPostings ps}]
-              | otherwise        = [summaryp{paccount=a,pamount=balance a} | a <- clippedanames]
-    summarypes = map (, e') $ (if showempty then id else filter (not . mixedAmountLooksZero . pamount)) summaryps
+    summaryps | mdepth == Just 0 = [summaryp{paccount="...",pamount=amounts $ sumPostings ps}]
+              | otherwise        = [summaryp{paccount=a,pamount=amounts $ balance a} | a <- clippedanames]
+    summarypes = map (, e') $ (if showempty then id else filter (not . mixedAmountLooksZero . mixed . pamount)) summaryps
     anames = nubSort $ map paccount ps
     -- aggregate balances by account, like ledgerFromJournal, then do depth-clipping
     accts = accountsFromPostings ps
@@ -232,7 +232,7 @@ summarisePostingsInDateSpan (DateSpan b e) wd mdepth showempty ps
         isclipped a = maybe True (accountNameLevel a >=) mdepth
 
 negatePostingAmount :: Posting -> Posting
-negatePostingAmount p = p { pamount = maNegate $ pamount p }
+negatePostingAmount = postingTransformAmount negate
 
 
 -- tests

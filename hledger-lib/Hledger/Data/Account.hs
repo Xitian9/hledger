@@ -66,7 +66,7 @@ nullacct = Account
 accountsFromPostings :: [Posting] -> [Account]
 accountsFromPostings ps =
   let
-    summed = foldr (\p -> HM.insertWith addAndIncrement (paccount p) (1, pamount p)) mempty ps
+    summed = foldr (\p -> HM.insertWith addAndIncrement (paccount p) (1, mixed $ pamount p)) mempty ps
       where addAndIncrement (n, a) (m, b) = (n + m, a `maPlus` b)
     acctstree      = accountTree "root" $ HM.keys summed
     acctswithebals = mapAccounts setnumpsebalance acctstree
