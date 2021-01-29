@@ -4,11 +4,12 @@ Postings report, used by the register command.
 
 -}
 
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE CPP                 #-}
+{-# LANGUAGE FlexibleInstances   #-}
+{-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TupleSections #-}
+{-# LANGUAGE TupleSections       #-}
 
 module Hledger.Reports.PostingsReport (
   PostingsReport,
@@ -21,11 +22,14 @@ module Hledger.Reports.PostingsReport (
 )
 where
 
-import Data.List
+import Data.List (nub, sortOn)
 import Data.List.Extra (nubSort)
-import Data.Maybe
+import Data.Maybe (fromMaybe, isJust, isNothing)
+#if !(MIN_VERSION_base(4,11,0))
+import Data.Semigroup ((<>))
+#endif
 import Data.Text (Text)
-import Data.Time.Calendar
+import Data.Time.Calendar (Day, addDays)
 import Safe (headMay, lastMay)
 
 import Hledger.Data
@@ -101,11 +105,11 @@ postingsReport rspec@ReportSpec{rsOpts=ropts@ReportOpts{..}} j = items
           -- of --value on reports".
           -- XXX balance report doesn't value starting balance.. should this ?
           historical = balancetype_ == HistoricalBalance
-          startbal | average_  = if historical then precedingavg else 0
-                   | otherwise = if historical then precedingsum else 0
+          startbal | average_  = if historical then precedingavg else zeromixedamt
+                   | otherwise = if historical then precedingsum else zeromixedamt
             where
               precedingsum = sumPostings $ map (pvalue daybeforereportstart) precedingps
-              precedingavg | null precedingps = 0
+              precedingavg | null precedingps = zeromixedamt
                            | otherwise        = divideMixedAmount (fromIntegral $ length precedingps) precedingsum
               daybeforereportstart =
                 maybe (error' "postingsReport: expected a non-empty journal")  -- PARTIAL: shouldn't happen
@@ -121,8 +125,8 @@ postingsReport rspec@ReportSpec{rsOpts=ropts@ReportOpts{..}} j = items
 -- and return the new average/total.
 registerRunningCalculationFn :: ReportOpts -> (Int -> MixedAmount -> MixedAmount -> MixedAmount)
 registerRunningCalculationFn ropts
-  | average_ ropts = \i avg amt -> avg + divideMixedAmount (fromIntegral i) (amt - avg)
-  | otherwise      = \_ bal amt -> bal + amt
+  | average_ ropts = \i avg amt -> avg <> divideMixedAmount (fromIntegral i) (amt <> negateMixedAmount avg)
+  | otherwise      = \_ bal amt -> bal <> amt
 
 -- | Find postings matching a given query, within a given date span,
 -- and also any similarly-matched postings before that date span.
@@ -218,7 +222,7 @@ summarisePostingsInDateSpan (DateSpan b e) wd mdepth showempty ps
     e' = fromMaybe (maybe (addDays 1 nulldate) postingdate $ lastMay ps) e
     summaryp = nullposting{pdate=Just b'}
     clippedanames = nub $ map (clipAccountName mdepth) anames
-    summaryps | mdepth == Just 0 = [summaryp{paccount="...",pamount=sum $ map pamount ps}]
+    summaryps | mdepth == Just 0 = [summaryp{paccount="...",pamount=foldMap' pamount ps}]
               | otherwise        = [summaryp{paccount=a,pamount=balance a} | a <- clippedanames]
     summarypes = map (, e') $ (if showempty then id else filter (not . mixedAmountLooksZero . pamount)) summaryps
     anames = nubSort $ map paccount ps

@@ -197,7 +197,7 @@ accountNamesFromPostings :: [Posting] -> [AccountName]
 accountNamesFromPostings = nubSort . map paccount
 
 sumPostings :: [Posting] -> MixedAmount
-sumPostings = sumStrict . map pamount
+sumPostings = foldMap' pamount
 
 -- | Remove all prices of a posting
 removePrices :: Posting -> Posting

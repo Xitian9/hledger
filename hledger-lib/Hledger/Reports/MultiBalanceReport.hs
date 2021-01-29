@@ -37,7 +37,7 @@ where
 import Control.Monad (guard)
 import Data.Foldable (toList)
 import Data.List (sortOn, transpose)
-import Data.List.NonEmpty (NonEmpty(..))
+import Data.List.NonEmpty (NonEmpty(..), nonEmpty)
 import Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as HM
 import Data.Map (Map)
@@ -174,7 +174,7 @@ compoundBalanceReportWith rspec' j priceoracle subreportspecs = cbr
         (r:rs) -> sconcat $ fmap subreportTotal (r:|rs)
       where
         subreportTotal (_, sr, increasestotal) =
-            (if increasestotal then id else fmap negate) $ prTotals sr
+            (if increasestotal then id else fmap negateMixedAmount) $ prTotals sr
 
     cbr = CompoundPeriodicReport "" (M.keys colps) subreports overalltotals
 
@@ -338,7 +338,7 @@ generateMultiBalanceReport rspec@ReportSpec{rsOpts=ropts} j priceoracle colps st
     displaynames = dbg5 "displaynames" $ displayedAccounts rspec matrix
 
     -- All the rows of the report.
-    rows = dbg5 "rows" . (if invert_ ropts then map (fmap negate) else id)  -- Negate amounts if applicable
+    rows = dbg5 "rows" . (if invert_ ropts then map (fmap negateMixedAmount) else id)  -- Negate amounts if applicable
              $ buildReportRows ropts displaynames matrix
 
     -- Calculate column totals
@@ -369,8 +369,8 @@ buildReportRows ropts displaynames =
         -- These are always simply the sum/average of the displayed row amounts.
         -- Total for a cumulative/historical report is always the last column.
         rowtot = case balancetype_ ropts of
-            PeriodChange -> sum rowbals
-            _            -> lastDef 0 rowbals
+            PeriodChange -> mconcat rowbals
+            _            -> lastDef zeromixedamt rowbals
         rowavg = averageMixedAmounts rowbals
     balance = case accountlistmode_ ropts of ALTree -> aibalance; ALFlat -> aebalance
 
@@ -439,7 +439,7 @@ sortRows ropts j
         -- Set the inclusive balance of an account from the rows, or sum the
         -- subaccounts if it's not present
         accounttreewithbals = mapAccounts setibalance accounttree
-        setibalance a = a{aibalance = maybe (sum . map aibalance $ asubs a) prrTotal $
+        setibalance a = a{aibalance = maybe (foldMap aibalance $ asubs a) prrTotal $
                                           HM.lookup (aname a) rowMap}
         sortedaccounttree = sortAccountTreeByAmount (fromMaybe NormallyPositive $ normalbalance_ ropts) accounttreewithbals
         sortedanames = map aname $ drop 1 $ flattenAccounts sortedaccounttree
@@ -470,14 +470,14 @@ calculateTotalsRow ropts rows =
 
     colamts = transpose . map prrAmounts $ filter isTopRow rows
 
-    coltotals :: [MixedAmount] = dbg5 "coltotals" $ map sum colamts
+    coltotals :: [MixedAmount] = dbg5 "coltotals" $ map (maybe zeromixedamt sconcat . nonEmpty) colamts
 
     -- Calculate the grand total and average. These are always the sum/average
     -- of the column totals.
     -- Total for a cumulative/historical report is always the last column.
     grandtotal = case balancetype_ ropts of
-        PeriodChange -> sum coltotals
-        _            -> lastDef 0 coltotals
+        PeriodChange -> mconcat coltotals <> zeromixedamt  -- XXX Remove this when nullmixedamt is handled by showMixedAmount
+        _            -> lastDef zeromixedamt coltotals
     grandaverage = averageMixedAmounts coltotals
 
 -- | Map the report rows to percentages if needed
@@ -535,12 +535,12 @@ perdivide a b = fromMaybe (error' errmsg) $ do  -- PARTIAL:
 -- in scanl, so other properties (such as anumpostings) stay in the right place
 sumAcct :: Account -> Account -> Account
 sumAcct Account{aibalance=i1,aebalance=e1} a@Account{aibalance=i2,aebalance=e2} =
-    a{aibalance = i1 + i2, aebalance = e1 + e2}
+    a{aibalance = i1 <> i2, aebalance = e1 <> e2}
 
 -- Subtract the values in one account from another. Should be left-biased.
 subtractAcct :: Account -> Account -> Account
 subtractAcct a@Account{aibalance=i1,aebalance=e1} Account{aibalance=i2,aebalance=e2} =
-    a{aibalance = i1 - i2, aebalance = e1 - e2}
+    a{aibalance = i1 <> negateMixedAmount i2, aebalance = e1 <> negateMixedAmount e2}
 
 -- | Extract period changes from a cumulative list
 periodChanges :: Account -> Map k Account -> Map k Account
