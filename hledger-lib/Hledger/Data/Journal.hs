@@ -897,21 +897,15 @@ addOrAssignAmountAndCheckAssertionB p@Posting{paccount=acc, pamount=amt, pbalanc
       return p
 
   -- no explicit posting amount, but there is a balance assignment
-  -- TODO this doesn't yet handle inclusive assignments right, #1207
   | Just BalanceAssertion{baamount,batotal,bainclusive} <- mba = do
-      (diff,newbal) <- case batotal of
-        -- a total balance assignment (==, all commodities)
-        True  -> do
-          let newbal = Mixed [baamount]
-          diff <- (if bainclusive then setInclusiveRunningBalanceB else setRunningBalanceB) acc newbal
-          return (diff,newbal)
-        -- a partial balance assignment (=, one commodity)
-        False -> do
-          oldbalothercommodities <- filterMixedAmount ((acommodity baamount /=) . acommodity) <$> getRunningBalanceB acc
-          let assignedbalthiscommodity = Mixed [baamount]
-              newbal = oldbalothercommodities <> assignedbalthiscommodity
-          diff <- (if bainclusive then setInclusiveRunningBalanceB else setRunningBalanceB) acc newbal
-          return (diff,newbal)
+      newbal <- if batotal
+                   -- a total balance assignment (==, all commodities)
+                   then return $ mixedFromAmount baamount
+                   -- a partial balance assignment (=, one commodity)
+                   else do
+                     oldbalothercommodities <- filterMixedAmount ((acommodity baamount /=) . acommodity) <$> getRunningBalanceB acc
+                     return $ mixedAmountAddAmount oldbalothercommodities baamount
+      diff <- (if bainclusive then setInclusiveRunningBalanceB else setRunningBalanceB) acc newbal
       let p' = p{pamount=diff, poriginal=Just $ originalPosting p}
       whenM (R.reader bsAssrt) $ checkBalanceAssertionB p' newbal
       return p'
@@ -1153,7 +1147,7 @@ canonicalStyle a b = a{asprecision=prec, asdecimalpoint=decmark, asdigitgroups=m
 --       fixtransaction t@Transaction{tdate=d, tpostings=ps} = t{tpostings=map fixposting ps}
 --        where
 --         fixposting p@Posting{pamount=a} = p{pamount=fixmixedamount a}
---         fixmixedamount (Mixed as) = Mixed $ map fixamount as
+--         fixmixedamount = mapMixedAmount fixamount
 --         fixamount = fixprice
 --         fixprice a@Amount{price=Just _} = a
 --         fixprice a@Amount{commodity=c} = a{price=maybe Nothing (Just . UnitPrice) $ journalPriceDirectiveFor j d c}
