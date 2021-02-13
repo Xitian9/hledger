@@ -281,8 +281,8 @@ budgetReportAsText ropts@ReportOpts{..} budgetr = TB.toLazyText $
                Nothing
       where
         costedAmounts = case cost_ of
-            Cost   -> amounts . mixedAmountCost . normaliseMixedAmount
-            NoCost -> amounts . normaliseMixedAmount
+            Cost   -> amounts . mixedAmountCost
+            NoCost -> amounts
 
     maybetranspose | transpose_ = \(Table rh ch vals) -> Table ch rh (transpose vals)
                    | otherwise  = id
