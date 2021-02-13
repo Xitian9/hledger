@@ -84,8 +84,8 @@ close CliOpts{rawopts_=rawopts, reportspec_=rspec} j = do
 
     -- should we preserve cost information ?
     normalise = case boolopt "show-costs" rawopts of
-                  True  -> normaliseMixedAmount
-                  False -> normaliseMixedAmount . mixedAmountStripPrices
+                  True  -> id
+                  False -> mixedAmountStripPrices
 
     -- the balances to close
     (acctbals,_) = balanceReport rspec_ j

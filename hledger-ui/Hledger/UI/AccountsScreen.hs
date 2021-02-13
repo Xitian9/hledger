@@ -103,7 +103,7 @@ asInit d reset ui@UIState{
                         ,asItemRenderedAmounts    = map showAmountWithoutPrice amts
                         }
       where
-        amts = amounts . normaliseMixedAmountSquashPricesForDisplay $ mixedAmountStripPrices bal
+        amts = amounts $ mixedAmountStripPrices bal
     displayitems = map displayitem items
     -- blanks added for scrolling control, cf RegisterScreen.
     -- XXX Ugly. Changing to 0 helps when debugging.
