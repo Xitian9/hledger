@@ -20,10 +20,10 @@ import Control.Monad
 import Data.List.Extra (nubSort)
 import Data.Maybe
 -- import Data.Text (Text)
+import qualified Data.Set as S
 import qualified Data.Text as T
 -- import Data.Time.Calendar
 import Graphics.Vty (mkVty)
-import Safe
 import System.Directory
 import System.FilePath
 import System.FSNotify
@@ -141,11 +141,11 @@ runBrickUi uopts@UIOpts{cliopts_=copts@CliOpts{inputopts_=_iopts,reportspec_=rsp
       -- to that as usual.
       Just apat -> (rsSetAccount acct False registerScreen, [ascr'])
         where
-          acct = headDef (error' $ "--register "++apat++" did not match any account")  -- PARTIAL:
-                 . filterAccts $ journalAccountNames j
+          acct = fromMaybe (error' $ "--register "++apat++" did not match any account")  -- PARTIAL:
+                 . S.lookupMin . filterAccts $ journalAccountNames j
           filterAccts = case toRegexCI $ T.pack apat of
-              Right re -> filter (regexMatchText re)
-              Left  _  -> const []
+              Right re -> S.filter (regexMatchText re)
+              Left  _  -> const mempty
           -- Initialising the accounts screen is awkward, requiring
           -- another temporary UIState value..
           ascr' = aScreen $

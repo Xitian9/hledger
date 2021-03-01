@@ -23,9 +23,11 @@ import Control.Monad.State.Strict (evalState, evalStateT)
 import Control.Monad.Trans (liftIO)
 import Data.Char (toUpper, toLower)
 import Data.Either (isRight)
+import Data.Foldable (toList)
 import Data.Functor.Identity (Identity(..))
 import "base-compat-batteries" Data.List.Compat
 import Data.Maybe (fromJust, fromMaybe, isJust)
+import qualified Data.Set as S
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.IO as T
@@ -390,29 +392,29 @@ maybeExit = parser (\s -> if s=="." then throw UnexpectedEOF else Just s)
 -- Completion helpers
 
 dateCompleter :: String -> CompletionFunc IO
-dateCompleter = completer ["today","tomorrow","yesterday"]
+dateCompleter = completer $ S.fromList ["today","tomorrow","yesterday"]
 
 descriptionCompleter :: Journal -> String -> CompletionFunc IO
-descriptionCompleter j = completer (map T.unpack $ journalDescriptions j)
+descriptionCompleter j = completer (S.map T.unpack $ journalDescriptions j)
 
 accountCompleter :: Journal -> String -> CompletionFunc IO
-accountCompleter j = completer (map T.unpack $ journalAccountNamesDeclaredOrImplied j)
+accountCompleter j = completer (S.map T.unpack $ journalAccountNamesDeclaredOrImplied j)
 
 amountCompleter :: String -> CompletionFunc IO
-amountCompleter = completer []
+amountCompleter = completer mempty
 
 -- | Generate a haskeline completion function from the given
 -- completions and default, that case insensitively completes with
 -- prefix matches, or infix matches above a minimum length, or
 -- completes the null string with the default.
-completer :: [String] -> String -> CompletionFunc IO
+completer :: S.Set String -> String -> CompletionFunc IO
 completer completions def = completeWord Nothing "" completionsFor
     where
       simpleCompletion' s = (simpleCompletion s){isFinished=False}
       completionsFor "" = return [simpleCompletion' def]
       completionsFor i  = return (map simpleCompletion' ciprefixmatches)
           where
-            ciprefixmatches = [c | c <- completions, i `isPrefixOf` c]
+            ciprefixmatches = [c | c <- toList completions, i `isPrefixOf` c]
             -- mixed-case completions require haskeline > 0.7.1.2
             -- ciprefixmatches = [c | c <- completions, lowercase i `isPrefixOf` lowercase c]
 

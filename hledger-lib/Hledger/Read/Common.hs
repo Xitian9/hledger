@@ -135,6 +135,7 @@ import "base-compat-batteries" Data.List.Compat
 import Data.List.NonEmpty (NonEmpty(..))
 import Data.Maybe (catMaybes, fromMaybe, isJust, listToMaybe)
 import qualified Data.Map as M
+import qualified Data.Set as Set
 import qualified Data.Semigroup as Sem
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -151,7 +152,6 @@ import Text.Megaparsec.Custom
 
 import Hledger.Data
 import Hledger.Utils
-import Safe (headMay)
 import Text.Printf (printf)
 
 --- ** doctest setup
@@ -423,9 +423,8 @@ journalCheckCommoditiesDeclared j =
                           (linesPrepend "  " . (<>"\n") . textChomp $ showTransaction t)
       where
         mfirstundeclaredcomm =
-          headMay $ filter (not . (`elem` cs)) $ catMaybes $
-          (acommodity . baamount <$> pbalanceassertion) :
-          (map (Just . acommodity) . filter (/= missingamt) $ amounts pamount)
+          find (`Set.notMember` cs) . map acommodity $
+          (maybe id ((:) . baamount) pbalanceassertion) (filter (/= missingamt) $ amounts pamount)
         cs = journalCommoditiesDeclared j
 
 

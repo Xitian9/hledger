@@ -105,7 +105,6 @@ import Data.Function ((&))
 import qualified Data.HashTable.Class as H (toList)
 import qualified Data.HashTable.ST.Cuckoo as H
 import Data.List (find, foldl', sortOn)
-import Data.List.Extra (nubSort)
 import qualified Data.Map.Strict as M
 import Data.Maybe (catMaybes, fromJust, fromMaybe, isJust, mapMaybe, maybeToList)
 #if !(MIN_VERSION_base(4,11,0))
@@ -277,54 +276,54 @@ journalPostings :: Journal -> [Posting]
 journalPostings = concatMap tpostings . jtxns
 
 -- | Sorted unique commodity symbols declared by commodity directives in this journal.
-journalCommoditiesDeclared :: Journal -> [AccountName]
-journalCommoditiesDeclared = nubSort . M.keys . jcommodities
+journalCommoditiesDeclared :: Journal -> S.Set AccountName
+journalCommoditiesDeclared = M.keysSet . jcommodities
 
 -- | Unique transaction descriptions used in this journal.
-journalDescriptions :: Journal -> [Text]
-journalDescriptions = nubSort . map tdescription . jtxns
+journalDescriptions :: Journal -> S.Set Text
+journalDescriptions = S.fromList . map tdescription . jtxns
 
 -- | Sorted unique payees declared by payee directives in this journal.
-journalPayeesDeclared :: Journal -> [Payee]
-journalPayeesDeclared = nubSort . map fst . jdeclaredpayees
+journalPayeesDeclared :: Journal -> S.Set Payee
+journalPayeesDeclared = S.fromList . map fst . jdeclaredpayees
 
 -- | Sorted unique payees used by transactions in this journal.
-journalPayeesUsed :: Journal -> [Payee]
-journalPayeesUsed = nubSort . map transactionPayee . jtxns
+journalPayeesUsed :: Journal -> S.Set Payee
+journalPayeesUsed = S.fromList . map transactionPayee . jtxns
 
 -- | Sorted unique payees used in transactions or declared by payee directives in this journal.
-journalPayeesDeclaredOrUsed :: Journal -> [Payee]
-journalPayeesDeclaredOrUsed j = nubSort $ journalPayeesDeclared j ++ journalPayeesUsed j
+journalPayeesDeclaredOrUsed :: Journal -> S.Set Payee
+journalPayeesDeclaredOrUsed j = journalPayeesDeclared j <> journalPayeesUsed j
 
 -- | Sorted unique account names posted to by this journal's transactions.
-journalAccountNamesUsed :: Journal -> [AccountName]
+journalAccountNamesUsed :: Journal -> S.Set AccountName
 journalAccountNamesUsed = accountNamesFromPostings . journalPostings
 
 -- | Sorted unique account names implied by this journal's transactions -
 -- accounts posted to and all their implied parent accounts.
-journalAccountNamesImplied :: Journal -> [AccountName]
-journalAccountNamesImplied = expandAccountNames . journalAccountNamesUsed
+journalAccountNamesImplied :: Journal -> S.Set AccountName
+journalAccountNamesImplied = S.fromList . expandAccountNames . S.toList . journalAccountNamesUsed
 
 -- | Sorted unique account names declared by account directives in this journal.
-journalAccountNamesDeclared :: Journal -> [AccountName]
-journalAccountNamesDeclared = nubSort . map fst . jdeclaredaccounts
+journalAccountNamesDeclared :: Journal -> S.Set AccountName
+journalAccountNamesDeclared = S.fromList . map fst . jdeclaredaccounts
 
 -- | Sorted unique account names declared by account directives or posted to
 -- by transactions in this journal.
-journalAccountNamesDeclaredOrUsed :: Journal -> [AccountName]
-journalAccountNamesDeclaredOrUsed j = nubSort $ journalAccountNamesDeclared j ++ journalAccountNamesUsed j
+journalAccountNamesDeclaredOrUsed :: Journal -> S.Set AccountName
+journalAccountNamesDeclaredOrUsed j = journalAccountNamesDeclared j <> journalAccountNamesUsed j
 
 -- | Sorted unique account names declared by account directives, or posted to
 -- or implied as parents by transactions in this journal.
-journalAccountNamesDeclaredOrImplied :: Journal -> [AccountName]
-journalAccountNamesDeclaredOrImplied j = nubSort $ journalAccountNamesDeclared j ++ journalAccountNamesImplied j
+journalAccountNamesDeclaredOrImplied :: Journal -> S.Set AccountName
+journalAccountNamesDeclaredOrImplied j = journalAccountNamesDeclared j <> journalAccountNamesImplied j
 
 -- | Convenience/compatibility alias for journalAccountNamesDeclaredOrImplied.
-journalAccountNames :: Journal -> [AccountName]
+journalAccountNames :: Journal -> S.Set AccountName
 journalAccountNames = journalAccountNamesDeclaredOrImplied
 
 journalAccountNameTree :: Journal -> Tree AccountName
-journalAccountNameTree = accountNameTreeFrom . journalAccountNames
+journalAccountNameTree = accountNameTreeFrom . S.toList . journalAccountNames
 
 -- | Find up to N most similar and most recent transactions matching
 -- the given transaction description and query. Transactions are
@@ -1527,7 +1526,7 @@ tests_Journal = tests "Journal" [
     let
       j = samplejournal
       journalAccountNamesMatching :: Query -> Journal -> [AccountName]
-      journalAccountNamesMatching q = filter (q `matchesAccount`) . journalAccountNames
+      journalAccountNamesMatching q = S.toList . S.filter (q `matchesAccount`) . journalAccountNames
       namesfrom qfunc = journalAccountNamesMatching (qfunc j) j
     in [
        test "assets"      $ assertEqual "" ["assets","assets:bank","assets:bank:checking","assets:bank:saving","assets:cash"]
