@@ -73,8 +73,8 @@ where
 
 import Control.Monad (foldM)
 import Data.Foldable (asum)
-import Data.List.Extra (nubSort)
 import qualified Data.Map as M
+import qualified Data.Set as S
 import Data.Maybe
 import Data.MemoUgly (memo)
 #if !(MIN_VERSION_base(4,11,0))
@@ -193,8 +193,8 @@ hasBalanceAssignment :: Posting -> Bool
 hasBalanceAssignment p = not (hasAmount p) && isJust (pbalanceassertion p)
 
 -- | Sorted unique account names referenced by these postings.
-accountNamesFromPostings :: [Posting] -> [AccountName]
-accountNamesFromPostings = nubSort . map paccount
+accountNamesFromPostings :: [Posting] -> S.Set AccountName
+accountNamesFromPostings = S.fromList . map paccount
 
 sumPostings :: [Posting] -> MixedAmount
 sumPostings = foldMap' pamount
