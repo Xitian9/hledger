@@ -815,7 +815,8 @@ showMixedAmountDebug m | m == missingmixedamt = "(missing)"
 -- - If displayed on multiple lines, any Amounts longer than the
 --   maximum width will be elided.
 showMixedAmountB :: AmountDisplayOpts -> MixedAmount -> WideBuilder
-showMixedAmountB opts = showAmountsB opts . amounts . normaliseMixedAmountSquashPricesForDisplay
+showMixedAmountB opts = showAmountsB opts . amounts
+    . (if displayPrice opts then id else mixedAmountStripPrices) . normaliseMixedAmountSquashPricesForDisplay
 
 data AmountDisplay = AmountDisplay
   { adBuilder :: !WideBuilder  -- ^ String representation of the Amount
