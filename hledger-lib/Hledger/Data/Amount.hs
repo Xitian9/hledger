@@ -125,7 +125,8 @@ module Hledger.Data.Amount (
   showMixedAmountElided,
   showMixedAmountWithZeroCommodity,
   showMixedAmountB,
-  showMixedAmountLinesB,
+  showAmountsB,
+  showAmountsLinesB,
   wbToText,
   wbUnpack,
   mixedAmountSetPrecision,
@@ -165,7 +166,6 @@ data AmountDisplayOpts = AmountDisplayOpts
   { displayPrice         :: Bool       -- ^ Whether to display the Price of an Amount.
   , displayZeroCommodity :: Bool       -- ^ If the Amount rounds to 0, whether to display its commodity string.
   , displayColour        :: Bool       -- ^ Whether to colourise negative Amounts.
-  , displayNormalised    :: Bool       -- ^ Whether to normalise MixedAmounts before displaying.
   , displayOneLine       :: Bool       -- ^ Whether to display on one line.
   , displayMinWidth      :: Maybe Int  -- ^ Minimum width to pad to
   , displayMaxWidth      :: Maybe Int  -- ^ Maximum width to clip to
@@ -179,7 +179,6 @@ noColour :: AmountDisplayOpts
 noColour = AmountDisplayOpts { displayPrice         = True
                              , displayColour        = False
                              , displayZeroCommodity = False
-                             , displayNormalised    = True
                              , displayOneLine       = False
                              , displayMinWidth      = Nothing
                              , displayMaxWidth      = Nothing
@@ -735,6 +734,9 @@ showMixedAmountDebug m | m == missingmixedamt = "(missing)"
                        | otherwise       = printf "Mixed [%s]" as
     where as = intercalate "\n       " $ map showAmountDebug $ amounts m
 
+showMixedAmountB :: AmountDisplayOpts -> MixedAmount -> WideBuilder
+showMixedAmountB opts = showAmountsB opts . amounts . normaliseMixedAmountSquashPricesForDisplay
+
 -- | General function to generate a WideBuilder for a MixedAmount, according the
 -- supplied AmountDisplayOpts. This is the main function to use for showing
 -- MixedAmounts, constructing a builder; it can then be converted to a Text with
@@ -745,13 +747,13 @@ showMixedAmountDebug m | m == missingmixedamt = "(missing)"
 --   fit in the given width, and further Amounts will be elided.
 -- - If displayed on multiple lines, any Amounts longer than the
 --   maximum width will be elided.
-showMixedAmountB :: AmountDisplayOpts -> MixedAmount -> WideBuilder
-showMixedAmountB opts ma
-    | displayOneLine opts = showMixedAmountOneLineB opts ma'
+showAmountsB :: AmountDisplayOpts -> [Amount] -> WideBuilder
+showAmountsB opts amts'
+    | displayOneLine opts = showAmountsOneLineB opts amts
     | otherwise           = WideBuilder (wbBuilder . mconcat $ intersperse sep lines) width
   where
-    ma' = if displayPrice opts then ma else mixedAmountStripPrices ma
-    lines = showMixedAmountLinesB opts ma'
+    amts = if null amts' then [nullamt] else amts'
+    lines = showAmountsLinesB opts amts
     width = headDef 0 $ map wbWidth lines
     sep = WideBuilder (TB.singleton '\n') 0
 
@@ -760,12 +762,10 @@ showMixedAmountB opts ma
 -- normalised), and padded/elided to the appropriate width. This does not
 -- honour displayOneLine: all amounts will be displayed as if displayOneLine
 -- were False.
-showMixedAmountLinesB :: AmountDisplayOpts -> MixedAmount -> [WideBuilder]
-showMixedAmountLinesB opts@AmountDisplayOpts{displayMaxWidth=mmax,displayMinWidth=mmin} ma =
+showAmountsLinesB :: AmountDisplayOpts -> [Amount] -> [WideBuilder]
+showAmountsLinesB opts@AmountDisplayOpts{displayMaxWidth=mmax,displayMinWidth=mmin} amts =
     map (adBuilder . pad) elided
   where
-    Mixed amts = if displayNormalised opts then normaliseMixedAmountSquashPricesForDisplay ma else ma
-
     astrs = amtDisplayList (wbWidth sep) (showAmountB opts) amts
     sep   = WideBuilder (TB.singleton '\n') 0
     width = maximum $ fromMaybe 0 mmin : map (wbWidth . adBuilder) elided
@@ -782,12 +782,10 @@ showMixedAmountLinesB opts@AmountDisplayOpts{displayMaxWidth=mmax,displayMinWidt
 -- | Helper for showMixedAmountB to deal with single line displays. This does not
 -- honour displayOneLine: all amounts will be displayed as if displayOneLine
 -- were True.
-showMixedAmountOneLineB :: AmountDisplayOpts -> MixedAmount -> WideBuilder
-showMixedAmountOneLineB opts@AmountDisplayOpts{displayMaxWidth=mmax,displayMinWidth=mmin} ma =
+showAmountsOneLineB :: AmountDisplayOpts -> [Amount] -> WideBuilder
+showAmountsOneLineB opts@AmountDisplayOpts{displayMaxWidth=mmax,displayMinWidth=mmin} amts =
     WideBuilder (wbBuilder . pad . mconcat . intersperse sep $ map adBuilder elided) . max width $ fromMaybe 0 mmin
   where
-    Mixed amts = if displayNormalised opts then normaliseMixedAmountSquashPricesForDisplay ma else ma
-
     width  = maybe 0 adTotal $ lastMay elided
     astrs  = amtDisplayList (wbWidth sep) (showAmountB opts) amts
     sep    = WideBuilder (TB.fromString ", ") 2
