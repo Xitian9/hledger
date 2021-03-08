@@ -37,7 +37,7 @@ where
 import Control.Monad (guard)
 import Data.Foldable (toList)
 import Data.List (sortOn, transpose)
-import Data.List.NonEmpty (NonEmpty(..), nonEmpty)
+import Data.List.NonEmpty (NonEmpty(..))
 import Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as HM
 import Data.Map (Map)
@@ -357,7 +357,7 @@ buildReportRows :: ReportOpts
                 -> HashMap AccountName DisplayName
                 -> HashMap AccountName (Map DateSpan Account)
                 -> [MultiBalanceReportRow]
-buildReportRows ropts displaynames = 
+buildReportRows ropts displaynames =
   toList . HM.mapMaybeWithKey mkRow  -- toList of HashMap's Foldable instance - does not sort consistently
   where
     mkRow name accts = do
@@ -470,14 +470,14 @@ calculateTotalsRow ropts rows =
 
     colamts = transpose . map prrAmounts $ filter isTopRow rows
 
-    coltotals :: [MixedAmount] = dbg5 "coltotals" $ map (maybe zeromixedamt sconcat . nonEmpty) colamts
+    coltotals :: [MixedAmount] = dbg5 "coltotals" $ map mconcat colamts
 
     -- Calculate the grand total and average. These are always the sum/average
     -- of the column totals.
     -- Total for a cumulative/historical report is always the last column.
     grandtotal = case balancetype_ ropts of
-        PeriodChange -> mconcat coltotals <> zeromixedamt  -- XXX Remove this when nullmixedamt is handled by showMixedAmount
-        _            -> lastDef zeromixedamt coltotals
+        PeriodChange -> mconcat coltotals
+        _            -> lastDef nullmixedamt coltotals
     grandaverage = averageMixedAmounts coltotals
 
 -- | Map the report rows to percentages if needed
@@ -586,7 +586,7 @@ tests_MultiBalanceReport = tests "MultiBalanceReport" [
   in
    tests "multiBalanceReport" [
       test "null journal"  $
-      (defreportspec, nulljournal) `gives` ([], Mixed [nullamt])
+      (defreportspec, nulljournal) `gives` ([], nullmixedamt)
 
      ,test "with -H on a populated period"  $
       (defreportspec{rsOpts=defreportopts{period_= PeriodBetween (fromGregorian 2008 1 1) (fromGregorian 2008 1 2), balancetype_=HistoricalBalance}}, samplejournal) `gives`
