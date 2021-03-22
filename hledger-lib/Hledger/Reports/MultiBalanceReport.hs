@@ -559,15 +559,16 @@ cumulativeSum value start = snd . M.mapAccumWithKey accumValued start
 postingAndAccountValuations :: ReportSpec -> Journal -> PriceOracle
                             -> (DateSpan -> Posting -> Posting, DateSpan -> Account -> Account)
 postingAndAccountValuations ReportSpec{rsToday=today, rsOpts=ropts} j priceoracle = case value_ ropts of
-    Just (AtEnd _) -> (const id, avalue' (cost_ ropts) (value_ ropts))
-    _              -> (pvalue' (cost_ ropts) (value_ ropts), const id)
+    Just v@(AtEnd _) -> (pvalue' (cost_ ropts) Nothing, avalue' v)
+    _                -> (pvalue' (cost_ ropts) (value_ ropts), const id)
   where
-    avalue' c v span a = a{aibalance = value (aibalance a), aebalance = value (aebalance a)}
-      where value = mixedAmountApplyCostValuation priceoracle styles (end span) today (error "multiBalanceReport: did not expect amount valuation to be called ") c v  -- PARTIAL: should not happen
-    pvalue' c v span = postingApplyCostValuation priceoracle styles (end span) today c v
-    end = fromMaybe (error "multiBalanceReport: expected all spans to have an end date")  -- XXX should not happen
-        . fmap (addDays (-1)) . spanEnd
+    pvalue' c v span = maybeStripPrices . postingApplyCostValuation priceoracle styles (end span) today c v
+    avalue' v span a = a{aibalance = value (aibalance a), aebalance = value (aebalance a)}
+      where value = mixedAmountApplyValuation priceoracle styles (end span) today (error "multiBalanceReport: did not expect amount valuation to be called ") v  -- PARTIAL: should not happen
+    end = maybe (error "multiBalanceReport: expected all spans to have an end date")  -- XXX should not happen
+            (addDays (-1)) . spanEnd
     styles = journalCommodityStyles j
+    maybeStripPrices = if show_costs_ ropts then id else postingStripPrices
 
 -- tests
 

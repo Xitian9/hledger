@@ -360,9 +360,9 @@ $ hledger -f- bal -N --value=2000-01-15 -b 2000
 $ hledger -f- bal -N --value=now -b 2000
                 12 B  a
 
-# 33. single column balance report valued at default date (same as --value=end)
-$ hledger -f- bal -N -V -b 2000
-                12 B  a
+# 33. single column balance report valued at cost and end (should be the same as --cost in this case)
+$ hledger -f- bal -N --cost --value=end -b 2000
+                21 B  a
 
 # balance, periodic
 
