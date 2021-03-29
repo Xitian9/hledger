@@ -37,7 +37,7 @@ module Hledger.Data.Posting (
   postingAllTags,
   transactionAllTags,
   relatedPostings,
-  removePrices,
+  postingStripPrices,
   postingApplyAliases,
   -- * date operations
   postingDate,
@@ -202,8 +202,8 @@ sumPostings :: [Posting] -> MixedAmount
 sumPostings = foldl' (\amt p -> maAddAmounts amt $ pamount p) nullmixedamt
 
 -- | Remove all prices of a posting
-removePrices :: Posting -> Posting
-removePrices = postingTransformAmount (\a -> a{aprice=Nothing})
+postingStripPrices :: Posting -> Posting
+postingStripPrices = postingTransformAmount amountStripPrices
 
 -- | Get a posting's (primary) date - it's own primary date if specified,
 -- otherwise the parent transaction's primary date, or the null date if
