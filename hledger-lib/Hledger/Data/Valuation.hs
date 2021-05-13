@@ -14,7 +14,6 @@ looking up historical market prices (exchange rates) between commodities.
 
 module Hledger.Data.Valuation (
    Costing(..)
-  ,Gaining(..)
   ,ValuationType(..)
   ,PriceOracle
   ,journalPriceOracle
@@ -23,6 +22,7 @@ module Hledger.Data.Valuation (
   ,amountValueAtDate
   ,mixedAmountApplyCostValuation
   ,mixedAmountApplyValuation
+  ,mixedAmountApplyGainValuation
   ,mixedAmountValueAtDate
   ,marketPriceReverse
   ,priceDirectiveToMarketPrice
@@ -57,10 +57,6 @@ import Text.Printf (printf)
 
 -- | Whether to convert amounts to cost.
 data Costing = Cost | NoCost
-  deriving (Show,Eq)
-
--- | Whether to convert amounts to gain.
-data Gaining = Gain | NoGain
   deriving (Show,Eq)
 
 -- | What kind of value conversion should be done on amounts ?
@@ -109,9 +105,16 @@ priceDirectiveToMarketPrice PriceDirective{..} =
 -- using the provided price oracle, commodity styles, and reference dates.
 -- Costing is done first if requested, and after that any valuation.
 -- See amountApplyValuation and amountCost.
-mixedAmountApplyCostValuation :: PriceOracle -> M.Map CommoditySymbol AmountStyle -> Day -> Day -> Day -> Costing -> Maybe ValuationType -> Gaining -> MixedAmount -> MixedAmount
-mixedAmountApplyCostValuation priceoracle styles periodlast today postingdate cost v gain =
-    mapMixedAmount (amountApplyCostValuation priceoracle styles periodlast today postingdate cost v gain)
+mixedAmountApplyCostValuation :: PriceOracle -> M.Map CommoditySymbol AmountStyle -> Day -> Day -> Day -> Costing -> Maybe ValuationType -> MixedAmount -> MixedAmount
+mixedAmountApplyCostValuation priceoracle styles periodlast today postingdate cost v =
+    mapMixedAmount (amountApplyCostValuation priceoracle styles periodlast today postingdate cost v)
+
+-- | Calculate the gain for this mixed amount using the provided price oracle,
+-- commodity styles, and reference dates.
+-- See amountApplyGainValuation.
+mixedAmountApplyGainValuation :: PriceOracle -> M.Map CommoditySymbol AmountStyle -> Day -> Day -> Day -> ValuationType -> MixedAmount -> MixedAmount
+mixedAmountApplyGainValuation priceoracle styles periodlast today postingdate v =
+    mapMixedAmount (amountApplyGainValuation priceoracle styles periodlast today postingdate v)
 
 -- | Apply a specified valuation to this mixed amount, using the
 -- provided price oracle, commodity styles, and reference dates.
@@ -124,13 +127,11 @@ mixedAmountApplyValuation priceoracle styles periodlast today postingdate v =
 -- using the provided price oracle, commodity styles, and reference dates.
 -- Costing is done first if requested, and after that any valuation.
 -- See amountApplyValuation and amountCost.
-amountApplyCostValuation :: PriceOracle -> M.Map CommoditySymbol AmountStyle -> Day -> Day -> Day -> Costing -> Maybe ValuationType -> Gaining -> Amount -> Amount
-amountApplyCostValuation priceoracle styles periodlast today postingdate cost v gain =
+amountApplyCostValuation :: PriceOracle -> M.Map CommoditySymbol AmountStyle -> Day -> Day -> Day -> Costing -> Maybe ValuationType -> Amount -> Amount
+amountApplyCostValuation priceoracle styles periodlast today postingdate cost v =
     valuation . costing
   where
-    valuation = maybe id (case gain of
-      Gain   -> amountApplyGainValuation priceoracle styles periodlast today postingdate
-      NoGain -> amountApplyValuation priceoracle styles periodlast today postingdate) v
+    valuation = maybe id (amountApplyValuation priceoracle styles periodlast today postingdate) v
     costing = case cost of
         Cost   -> styleAmount styles . amountCost
         NoCost -> id

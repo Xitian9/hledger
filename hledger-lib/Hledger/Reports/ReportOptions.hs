@@ -65,6 +65,7 @@ import Hledger.Utils
 data ReportType = ChangeReport       -- ^ The sum of posting amounts.
                 | BudgetReport       -- ^ The sum of posting amounts and the goal.
                 | ValueChangeReport  -- ^ The change of value of period-end historical values.
+                | GainReport         -- ^ The gain of posting amounts, i.e. difference between valuation and cost
   deriving (Eq, Show)
 
 instance Default ReportType where def = ChangeReport
@@ -95,7 +96,6 @@ data ReportOpts = ReportOpts {
     ,statuses_       :: [Status]  -- ^ Zero, one, or two statuses to be matched
     ,cost_           :: Costing  -- ^ Should we convert amounts to cost, when present?
     ,value_          :: Maybe ValuationType  -- ^ What value should amounts be converted to ?
-    ,gain_           :: Gaining  -- ^ Should we apply gain calculation when possible?
     ,infer_value_    :: Bool      -- ^ Infer market prices from transactions ?
     ,depth_          :: Maybe Int
     ,date2_          :: Bool
@@ -148,7 +148,6 @@ defreportopts = ReportOpts
     , statuses_        = []
     , cost_            = NoCost
     , value_           = Nothing
-    , gain_            = NoGain
     , infer_value_     = False
     , depth_           = Nothing
     , date2_           = False
@@ -196,7 +195,6 @@ rawOptsToReportOpts rawopts = do
           ,statuses_    = statusesFromRawOpts rawopts
           ,cost_        = costing
           ,value_       = valuation
-          ,gain_        = if boolopt "gain" rawopts then Gain else NoGain
           ,infer_value_ = boolopt "infer-market-price" rawopts
           ,depth_       = maybeposintopt "depth" rawopts
           ,date2_       = boolopt "date2" rawopts
@@ -290,8 +288,9 @@ reporttypeopt =
   fromMaybe ChangeReport . choiceopt parse where
     parse = \case
       "sum"         -> Just ChangeReport
-      "valuechange" -> Just ValueChangeReport
       "budget"      -> Just BudgetReport
+      "valuechange" -> Just ValueChangeReport
+      "gain"        -> Just GainReport
       _             -> Nothing
 
 balancetypeopt :: RawOpts -> BalanceType
@@ -443,6 +442,9 @@ valuationTypeFromRawOpts rawopts = (costing, valuation)
             Nothing        -> Just $ AtEnd Nothing  -- If no valuation requested for valuechange, use AtEnd
             Just (AtEnd _) -> directval             -- If AtEnd valuation requested, use it
             Just _         -> usageError "--valuechange only produces sensible results with --value=end"
+        GainReport -> case directval of
+            Nothing        -> Just $ AtEnd Nothing  -- If no valuation requested for valuechange, use AtEnd
+            Just _         -> directval             -- Otherwise, use requested valuation
         _                  -> directval             -- Otherwise, use requested valuation
       where directval = lastMay $ mapMaybe snd valuationopts
 

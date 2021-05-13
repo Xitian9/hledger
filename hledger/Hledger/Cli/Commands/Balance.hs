@@ -286,6 +286,8 @@ balancemode = hledgerCommandMode
       "show sum of posting amounts compared to budget goals defined by periodic transactions\n "
    ,flagNone ["valuechange"] (setboolopt "valuechange")
       "show change of value of period-end historical balances"
+   ,flagNone ["gain"] (setboolopt "gain")
+      "show gain, the value minus the cost basis"
 
    ,flagNone ["change"] (setboolopt "change")
       "accumulate amounts from column start to column end (in multicolumn reports, default)"
@@ -595,6 +597,9 @@ multiBalanceReportAsText ropts@ReportOpts{..} r = TB.toLazyText $
     title = mtitle <> " in " <> showDateSpan (periodicReportSpan r) <> valuationdesc <> ":"
 
     mtitle = case (reporttype_, balancetype_) of
+        (GainReport,        PeriodChange     ) -> "Gain"
+        (GainReport,        CumulativeChange ) -> "Cumulative gain"
+        (GainReport,        HistoricalBalance) -> "Historical gain"
         (ValueChangeReport, PeriodChange     ) -> "Period-end value changes"
         (ValueChangeReport, CumulativeChange ) -> "Cumulative period-end value changes"
         (_,                 PeriodChange     ) -> "Balance changes"
@@ -611,9 +616,6 @@ multiBalanceReportAsText ropts@ReportOpts{..} r = TB.toLazyText $
             Just (AtNow _mc)     -> ", current value"
             Just (AtDate d _mc)  -> ", valued at " <> showDate d
             Nothing              -> "")
-        <> (case gain_ of
-            Gain   -> " with cost substracted"
-            NoGain -> "" :: T.Text)
 
     changingValuation = case (reporttype_, balancetype_) of
         (ValueChangeReport, PeriodChange)     -> True

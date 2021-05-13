@@ -196,9 +196,9 @@ startingBalances rspec@ReportSpec{rsQuery=query,rsOpts=ropts} j priceoracle repo
     rspec' = rspec{rsQuery=startbalq,rsOpts=ropts'}
     -- If we're re-valuing every period, we need to have the unvalued start
     -- balance, so we can do it ourselves later.
-    ropts' = case value_ ropts of
-        Just (AtEnd _) -> ropts''{value_=Nothing}
-        _              -> ropts''
+    ropts' | GainReport <- reporttype_ ropts = ropts''{value_=Nothing,cost_=NoCost,show_costs_=True}
+           | Just (AtEnd _) <- value_ ropts  = ropts''{value_=Nothing}
+           | otherwise                       = ropts''
       where ropts'' = ropts{period_=precedingperiod, no_elide_=accountlistmode_ ropts == ALTree}
 
     -- q projected back before the report start date.
@@ -295,7 +295,7 @@ calculateReportMatrix rspec@ReportSpec{rsOpts=ropts} j priceoracle startbals col
     -- starting-balance-based historical balances.
     rowbals name changes = dbg5 "rowbals" $ case balancetype_ ropts of
         PeriodChange      -> changeamts
-        CumulativeChange  -> cumulativeSum avalue nullacct changeamts
+        CumulativeChange  -> cumulative
         HistoricalBalance -> historical
       where
         -- changes to report on: usually just the changes itself, but use the
@@ -304,7 +304,10 @@ calculateReportMatrix rspec@ReportSpec{rsOpts=ropts} j priceoracle startbals col
             ChangeReport      -> M.mapWithKey avalue changes
             BudgetReport      -> M.mapWithKey avalue changes
             ValueChangeReport -> periodChanges valuedStart historical
+            GainReport        -> periodChanges valuedStart historical
+        cumulative = cumulativeSum avalue nullacct changeamts
         historical = cumulativeSum avalue startingBalance changes
+
         startingBalance = HM.lookupDefault nullacct name startbals
         valuedStart = avalue (DateSpan Nothing historicalDate) startingBalance
 
@@ -332,7 +335,7 @@ generateMultiBalanceReport rspec@ReportSpec{rsOpts=ropts} j priceoracle colps st
     report
   where
     -- Process changes into normal, cumulative, or historical amounts, plus value them
-    matrix = calculateReportMatrix rspec j priceoracle startbals colps
+    matrix = dbg5 "matrix" $ calculateReportMatrix rspec j priceoracle startbals colps
 
     -- All account names that will be displayed, possibly depth-clipped.
     displaynames = dbg5 "displaynames" $ displayedAccounts rspec matrix
@@ -557,21 +560,24 @@ cumulativeSum value start = snd . M.mapAccumWithKey accumValued start
 -- MultiBalanceReport.
 postingAndAccountValuations :: ReportSpec -> Journal -> PriceOracle
                             -> (DateSpan -> Posting -> Posting, DateSpan -> Account -> Account)
-postingAndAccountValuations ReportSpec{rsToday=today, rsOpts=ropts} j priceoracle = case value_ ropts of
+postingAndAccountValuations ReportSpec{rsToday=today, rsOpts=ropts} j priceoracle
+    -- If we're doing a gain report, everything must be done at the Account valuation step.
+    | GainReport <- reporttype_ ropts, Just v <- value_ ropts = (const id, again v)
     -- If we're doing AtEnd valuation, we may need to value the same posting at different dates
     -- (for example, when preparing a ValueChange report). So we should only convert to cost and
     -- maybe strip prices from the Posting, and should do valuation on the Accounts.
-    Just v@(AtEnd _) -> (pvalue Nothing, avalue v)
+    | Just v@(AtEnd _) <- value_ ropts = (pvalue Nothing, avalue v)
     -- Otherwise, all costing and valuation should be done on the Postings.
-    _                -> (pvalue (value_ ropts), const id)
+    | otherwise = (pvalue (value_ ropts), const id)
   where
     -- For a Posting: convert to cost, apply valuation, then strip prices if we don't need them (See issue #1507).
-    pvalue v span = maybeStripPrices . postingApplyCostValuation priceoracle styles (end span) today (cost_ ropts) v (gain_ ropts)
+    pvalue v span = maybeStripPrices . postingApplyCostValuation priceoracle styles (end span) today (cost_ ropts) v
     -- For an Account: Apply valuation to both the inclusive and exclusive balances.
-    avalue v span a = a{aibalance = value (aibalance a), aebalance = value (aebalance a)}
-      where value = mixedAmountApplyCostValuation priceoracle styles (end span) today (error "multiBalanceReport: did not expect amount valuation to be called ") (cost_ ropts) (Just v) (gain_ ropts)  -- PARTIAL: should not happen
+    avalue v span = acctApply $ mixedAmountApplyCostValuation priceoracle styles (end span) today (error "multiBalanceReport: did not expect amount valuation to be called ") (cost_ ropts) (Just v)  -- PARTIAL: should not happen
+    again  v span = acctApply $ mixedAmountApplyGainValuation priceoracle styles (end span) today (error "multiBalanceReport: cannot yet calculate gain with --value=then valuation ") v
+    acctApply f a = a{aibalance = f $ aibalance a, aebalance = f $ aebalance a}
 
-    maybeStripPrices = if show_costs_ ropts || gain_ ropts == Gain then id else postingStripPrices
+    maybeStripPrices = if show_costs_ ropts then id else postingStripPrices
     end = maybe (error "multiBalanceReport: expected all spans to have an end date")  -- PARTIAL: should not happen
             (addDays (-1)) . spanEnd
     styles = journalCommodityStyles j

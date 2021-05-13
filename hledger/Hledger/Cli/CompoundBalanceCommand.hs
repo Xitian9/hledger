@@ -65,6 +65,8 @@ compoundBalanceCommandMode CompoundBalanceCommandSpec{..} =
       "show sum of posting amounts (default)"
    ,flagNone ["valuechange"] (setboolopt "valuechange")
       "show change of value of period-end historical balances"
+   ,flagNone ["gain"] (setboolopt "gain")
+      "show gain, the value minus the cost basis"
    ,flagNone ["budget"] (setboolopt "budget")
       "show sum of posting amounts compared to budget goals defined by periodic transactions\n "
 
@@ -150,9 +152,6 @@ compoundBalanceCommand CompoundBalanceCommandSpec{..} opts@CliOpts{reportspec_=r
                Just (AtNow _mc)        -> ", current value"
                Just (AtDate today _mc) -> ", valued at " <> showDate today
                Nothing                 -> "")
-          <> (case gain_ of
-               Gain   -> " with cost substraced"
-               NoGain -> "" :: T.Text)
 
         changingValuation = case (reporttype_, balancetype_) of
             (ValueChangeReport, PeriodChange)     -> True
