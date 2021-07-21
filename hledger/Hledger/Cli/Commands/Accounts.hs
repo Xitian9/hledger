@@ -20,9 +20,10 @@ module Hledger.Cli.Commands.Accounts (
  ,accounts
 ) where
 
+import qualified Data.ByteString as BS
 import Data.List
 import qualified Data.Text as T
-import qualified Data.Text.IO as T
+import Data.Text.Encoding (encodeUtf8)
 import System.Console.CmdArgs.Explicit as C
 
 import Hledger
@@ -75,7 +76,7 @@ accounts CliOpts{rawopts_=rawopts, reportspec_=ReportSpec{_rsQuery=query,_rsRepo
         sortedaccts
 
   -- 4. print what remains as a list or tree, maybe applying --drop in the former case
-  mapM_ (T.putStrLn . render) clippedaccts
+  mapM_ (BS.putStrLn . encodeUtf8 . render) clippedaccts
     where
       render a = case accountlistmode_ ropts of
           ALTree -> T.replicate indent " " <> accountLeafName droppedName

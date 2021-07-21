@@ -33,10 +33,12 @@ import Control.Exception as C
 
 import Data.List
 import Data.Maybe
+import qualified Data.ByteString as BS
+import qualified Data.ByteString.Lazy as BL
 import qualified Data.Text as T
-import qualified Data.Text.IO as T
+import qualified Data.Text.Encoding as T
 import qualified Data.Text.Lazy as TL
-import qualified Data.Text.Lazy.IO as TL
+import qualified Data.Text.Lazy.Encoding as TL
 import Data.Time (UTCTime, Day)
 import Safe (readMay, headMay)
 import System.Console.CmdArgs
@@ -111,17 +113,21 @@ anonymiseByOpts opts =
 -- | Write some output to stdout or to a file selected by --output-file.
 -- If the file exists it will be overwritten.
 writeOutput :: CliOpts -> String -> IO ()
-writeOutput opts s = do
-  f <- outputFileFromOpts opts
-  (maybe putStr writeFile f) s
+writeOutput opts = writeOutputLazyText opts . TL.pack
 
 -- | Write some output to stdout or to a file selected by --output-file.
 -- If the file exists it will be overwritten. This function operates on Lazy
 -- Text values.
 writeOutputLazyText :: CliOpts -> TL.Text -> IO ()
-writeOutputLazyText opts s = do
+writeOutputLazyText opts = writeOutputLazyByteString opts . TL.encodeUtf8
+
+-- | Write some output to stdout or to a file selected by --output-file.
+-- If the file exists it will be overwritten. This function operates on Lazy
+-- ByteString values.
+writeOutputLazyByteString :: CliOpts -> BL.ByteString -> IO ()
+writeOutputLazyByteString opts s = do
   f <- outputFileFromOpts opts
-  (maybe TL.putStr TL.writeFile f) s
+  maybe BL.putStr BL.writeFile f s
 
 -- -- | Get a journal from the given string and options, or throw an error.
 -- readJournal :: CliOpts -> String -> IO Journal
@@ -224,12 +230,12 @@ writeFileWithBackupIfChanged :: FilePath -> T.Text -> IO Bool
 writeFileWithBackupIfChanged f t = do
   s <- readFilePortably f
   if t == s then return False
-            else backUpFile f >> T.writeFile f t >> return True
+            else backUpFile f >> BS.writeFile f (T.encodeUtf8 t) >> return True
 
 -- | Back up this file with a (incrementing) numbered suffix, then
 -- overwrite it with this new text, or give an error.
 writeFileWithBackup :: FilePath -> String -> IO ()
-writeFileWithBackup f t = backUpFile f >> writeFile f t
+writeFileWithBackup f t = backUpFile f >> BS.writeFile f (T.encodeUtf8 $ T.pack t)
 
 readFileStrictly :: FilePath -> IO T.Text
 readFileStrictly f = readFilePortably f >>= \s -> C.evaluate (T.length s) >> return s

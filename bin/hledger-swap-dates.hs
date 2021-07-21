@@ -9,7 +9,8 @@
 {-# LANGUAGE RecordWildCards #-}
 
 import Data.String.QQ (s)
-import qualified Data.Text.IO as T
+import qualified Data.ByteString.Char8 as BS
+import Data.Text.Encoding (encodeUtf8)
 import Hledger
 import Hledger.Cli
 
@@ -36,7 +37,7 @@ main = do
       q = rsQuery rspec
       ts = filter (q `matchesTransaction`) $ jtxns $ journalApplyValuationFromOpts rspec j
       ts' = map transactionSwapDates ts
-    mapM_ (T.putStrLn . showTransaction) ts'
+    mapM_ (BS.putStrLn . encodeUtf8 . showTransaction) ts'
 
 transactionSwapDates :: Transaction -> Transaction
 transactionSwapDates t@Transaction{tdate2=Nothing} = t

@@ -16,13 +16,15 @@ module Hledger.Cli.Commands.Roi (
 import Control.Monad
 import System.Exit
 import Data.Time.Calendar
+import qualified Data.ByteString.Lazy as BL hiding (putStrLn)
+import qualified Data.ByteString.Lazy.Char8 as BL
 import Text.Printf
 import Data.Function (on)
 import Data.List
 import Numeric.RootFinding
 import Data.Decimal
 import qualified Data.Text as T
-import qualified Data.Text.Lazy.IO as TL
+import qualified Data.Text.Lazy.Encoding as TL
 import System.Console.CmdArgs.Explicit as CmdArgs
 
 import Text.Tabular.AsciiWide as Tab
@@ -154,7 +156,7 @@ roi CliOpts{rawopts_=rawopts, reportspec_=rspec@ReportSpec{_rsReportOpts=ReportO
                , Tab.Group SingleLine [Header "IRR", Header "TWR"]])
               tableBody
 
-  TL.putStrLn $ Tab.render prettyTables id id id table
+  BL.putStrLn . TL.encodeUtf8 $ Tab.render prettyTables id id id table
 
 timeWeightedReturn showCashFlow prettyTables investmentsQuery trans mixedAmountValue (OneSpan spanBegin spanEnd valueBeforeAmt valueAfter cashFlow pnl) = do
   let valueBefore = unMix valueBeforeAmt
@@ -215,7 +217,7 @@ timeWeightedReturn showCashFlow prettyTables investmentsQuery trans mixedAmountV
         unitPrices = add initialUnitPrice unitPrices'
         unitBalances = add initialUnits unitBalances'
 
-    TL.putStr $ Tab.render prettyTables id id T.pack
+    BL.putStr . TL.encodeUtf8 $ Tab.render prettyTables id id T.pack
       (Table
        (Tab.Group NoLine (map (Header . showDate) dates))
        (Tab.Group DoubleLine [ Tab.Group SingleLine [Header "Portfolio value", Header "Unit balance"]
@@ -245,7 +247,7 @@ internalRateOfReturn showCashFlow prettyTables (OneSpan spanBegin spanEnd valueB
   when showCashFlow $ do
     printf "\nIRR cash flow for %s - %s\n" (showDate spanBegin) (showDate (addDays (-1) spanEnd))
     let (dates, amounts) = unzip totalCF
-    TL.putStrLn $ Tab.render prettyTables id id id
+    BL.putStrLn . TL.encodeUtf8 $ Tab.render prettyTables id id id
       (Table
        (Tab.Group NoLine (map (Header . showDate) dates))
        (Tab.Group SingleLine [Header "Amount"])
@@ -290,5 +292,3 @@ showDecimal :: Decimal -> String
 showDecimal d = if d == rounded then show d else show rounded
   where
     rounded = roundTo 2 d
-
-

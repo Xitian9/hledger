@@ -100,6 +100,7 @@ import Control.Arrow (first)
 import Control.Monad (mplus, mzero, unless, void)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.State.Strict (runStateT)
+import qualified Data.ByteString.Char8 as BS
 import Data.String (fromString)
 import Data.Function (on)
 import Data.Functor.Identity (Identity(..))
@@ -110,7 +111,7 @@ import Data.Time.Calendar (toGregorian)
 import Data.Time.Calendar.OrdinalDate (mondayStartWeek, sundayStartWeek, toOrdinalDate)
 import Data.Text (Text, isPrefixOf, pack, unpack)
 import qualified Data.Text as T
-import qualified Data.Text.IO as T
+import Data.Text.Encoding (encodeUtf8)
 import qualified Hledger.Data as H
 import qualified Hledger.Query as H
 import qualified Hledger.Read as H
@@ -151,7 +152,7 @@ main = do
 checkAssertions :: [(H.AccountName, H.MixedAmount)] -> [(Text, Predicate)] -> [NonEmpty H.Posting] -> IO Bool
 checkAssertions balances0 asserts0 postingss
     | null failed = pure True
-    | otherwise = T.putStrLn (T.intercalate "\n\n" failed) >> pure False
+    | otherwise = BS.putStrLn (encodeUtf8 $ T.intercalate "\n\n" failed) >> pure False
   where
     (_, _, failed) = foldl' applyAndCheck (balances0, asserts0, []) postingss
 

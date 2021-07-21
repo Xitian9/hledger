@@ -11,8 +11,9 @@ module Hledger.Data.PeriodicTransaction (
 )
 where
 
+import qualified Data.ByteString as BS
 import qualified Data.Text as T
-import qualified Data.Text.IO as T
+import Data.Text.Encoding (encodeUtf8)
 import Text.Printf
 
 import Hledger.Data.Types
@@ -37,7 +38,7 @@ _ptgen str = do
   case checkPeriodicTransactionStartDate i s t of
     Just e  -> error' e  -- PARTIAL:
     Nothing ->
-      mapM_ (T.putStr . showTransaction) $
+      mapM_ (BS.putStr . encodeUtf8 . showTransaction) $
         runPeriodicTransaction
           nullperiodictransaction{ ptperiodexpr=t , ptspan=s, ptinterval=i, ptpostings=["a" `post` usd 1] }
           nulldatespan
@@ -49,7 +50,7 @@ _ptgenspan str span = do
   case checkPeriodicTransactionStartDate i s t of
     Just e  -> error' e  -- PARTIAL:
     Nothing ->
-      mapM_ (T.putStr . showTransaction) $
+      mapM_ (BS.putStr . encodeUtf8 . showTransaction) $
         runPeriodicTransaction
           nullperiodictransaction{ ptperiodexpr=t , ptspan=s, ptinterval=i, ptpostings=["a" `post` usd 1] }
           span

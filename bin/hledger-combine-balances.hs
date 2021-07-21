@@ -9,9 +9,10 @@
 
 import System.Environment (getArgs)
 import Hledger.Cli
+import qualified Data.ByteString.Lazy as BL
 import qualified Data.Map as M
 import Data.Map.Merge.Strict
-import qualified Data.Text.Lazy.IO as TL
+import Data.Text.Lazy.Encoding (encodeUtf8)
 
 appendReports :: MultiBalanceReport -> MultiBalanceReport -> MultiBalanceReport
 appendReports r1 r2 =
@@ -65,7 +66,7 @@ main = do
   (_,report1) <- mbReport report1args
   (rspec2,report2) <- mbReport report2args
   let merged = appendReports report1 report2
-  TL.putStrLn $ multiBalanceReportAsText (rsOpts rspec2) merged
+  BL.putStrLn . encodeUtf8 $ multiBalanceReportAsText (rsOpts rspec2) merged
   where
     mbReport args = do
       opts@CliOpts{reportspec_=rspec} <- getHledgerCliOpts' cmdmode args

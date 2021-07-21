@@ -59,10 +59,11 @@ modifyTransactions styles d tmods ts = do
 -- Currently the only kind of modification possible is adding automated
 -- postings when certain other postings are present.
 --
--- >>> import qualified Data.Text.IO as T
+-- >>> import qualified Data.ByteString.IO as BS
+-- >>> import Data.Text.Encoding.IO (encodeUtf8)
 -- >>> t = nulltransaction{tpostings=["ping" `post` usd 1]}
 -- >>> tmpost acc amt = TMPostingRule (acc `post` amt) False
--- >>> test = either putStr (T.putStr.showTransaction) . fmap ($ t) . transactionModifierToFunction mempty nulldate
+-- >>> test = either putStr (BS.putStr.encodeUtf8.showTransaction) . fmap ($ t) . transactionModifierToFunction nulldate
 -- >>> test $ TransactionModifier "" ["pong" `tmpost` usd 2]
 -- 0000-01-01
 --     ping           $1.00

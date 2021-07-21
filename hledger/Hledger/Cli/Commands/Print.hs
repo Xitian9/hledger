@@ -15,11 +15,12 @@ module Hledger.Cli.Commands.Print (
 )
 where
 
+import qualified Data.ByteString as BS
 import Data.Maybe (isJust)
 import Data.Text (Text)
 import Data.List (intersperse)
 import qualified Data.Text as T
-import qualified Data.Text.IO as T
+import Data.Text.Encoding (encodeUtf8)
 import qualified Data.Text.Lazy as TL
 import qualified Data.Text.Lazy.Builder as TB
 import System.Console.CmdArgs.Explicit
@@ -191,4 +192,4 @@ printMatch :: CliOpts -> Journal -> Text -> IO ()
 printMatch opts j desc = do
   case journalSimilarTransaction opts j desc of
     Nothing -> putStrLn "no matches found."
-    Just t  -> T.putStr $ showTransaction t
+    Just t  -> BS.putStr . encodeUtf8 $ showTransaction t

@@ -41,7 +41,7 @@ import Prelude ()
 import "base-compat-batteries" Prelude.Compat hiding (fail)
 import Control.Applicative        (liftA2)
 import Control.Exception          (IOException, handle, throw)
-import Control.Monad              (liftM, unless, when)
+import Control.Monad              (unless, when)
 import Control.Monad.Except       (ExceptT, throwError)
 import qualified Control.Monad.Fail as Fail
 import Control.Monad.IO.Class     (MonadIO, liftIO)
@@ -57,7 +57,6 @@ import qualified Data.Set as S
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
-import qualified Data.Text.IO as T
 import qualified Data.Text.Lazy as TL
 import qualified Data.Text.Lazy.Builder as TB
 import Data.Time.Calendar (Day)
@@ -202,7 +201,7 @@ expandIncludes dir content = mapM (expandLine dir) (T.lines content) >>= return 
   where
     expandLine dir line =
       case line of
-        (T.stripPrefix "include " -> Just f) -> expandIncludes dir' =<< T.readFile f'
+        (T.stripPrefix "include " -> Just f) -> expandIncludes dir' . T.decodeUtf8 =<< B.readFile f'
           where
             f' = dir </> T.unpack (T.dropWhile isSpace f)
             dir' = takeDirectory f'
@@ -774,7 +773,7 @@ readJournalFromCsv mrulesfile csvfile csvdata =
 
   when (not rulesfileexists) $ do
     dbg1IO "creating conversion rules file" rulesfile
-    T.writeFile rulesfile rulestext
+    B.writeFile rulesfile $ T.encodeUtf8 rulestext
 
   return $ Right nulljournal{jtxns=txns''}
 
@@ -789,7 +788,7 @@ parseSeparator = specials . T.toLower
 parseCsv :: Char -> FilePath -> Text -> IO (Either String CSV)
 parseCsv separator filePath csvdata =
   case filePath of
-    "-" -> liftM (parseCassava separator "(stdin)") T.getContents
+    "-" -> parseCassava separator "(stdin)" . T.decodeUtf8 <$> B.getContents
     _   -> return $ parseCassava separator filePath csvdata
 
 parseCassava :: Char -> FilePath -> Text -> Either String CSV

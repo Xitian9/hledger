@@ -7,10 +7,11 @@ module Hledger.Cli.Commands.Registermatch (
 )
 where
 
+import qualified Data.ByteString.Lazy as BL
 import Data.Char (toUpper)
 import Data.List
 import qualified Data.Text as T
-import qualified Data.Text.Lazy.IO as TL
+import Data.Text.Lazy.Encoding (encodeUtf8)
 import Hledger
 import Hledger.Cli.CliOptions
 import Hledger.Cli.Commands.Register
@@ -29,7 +30,7 @@ registermatch opts@CliOpts{rawopts_=rawopts,reportspec_=rspec} j =
         let ps = [p | (_,_,_,p,_) <- postingsReport rspec j]
         case similarPosting ps desc of
           Nothing -> putStrLn "no matches found."
-          Just p  -> TL.putStr $ postingsReportAsText opts [pri]
+          Just p  -> BL.putStr . encodeUtf8 $ postingsReportAsText opts [pri]
                      where pri = (Just (postingDate p)
                                  ,Nothing
                                  ,tdescription <$> ptransaction p

@@ -21,6 +21,7 @@ import Control.Monad (when)
 import Control.Monad.Trans.Class
 import Control.Monad.State.Strict (evalState, evalStateT)
 import Control.Monad.Trans (liftIO)
+import qualified Data.ByteString.Lazy.Char8 as BL
 import Data.Char (toUpper, toLower)
 import Data.Either (isRight)
 import Data.Functor.Identity (Identity(..))
@@ -30,7 +31,7 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.IO as T
 import qualified Data.Text.Lazy as TL
-import qualified Data.Text.Lazy.IO as TL
+import qualified Data.Text.Lazy.Encoding as TL
 import Data.Time.Calendar (Day)
 import Data.Time.Format (formatTime, defaultTimeLocale, iso8601DateFormat)
 import Safe (headDef, headMay, atMay)
@@ -436,7 +437,7 @@ journalAddTransaction j@Journal{jtxns=ts} opts t = do
     -- unelided shows all amounts explicitly, in case there's a price, cf #283
   when (debug_ opts > 0) $ do
     putStrLn $ printf "\nAdded transaction to %s:" f
-    TL.putStrLn =<< registerFromString (showTransaction t)
+    BL.putStrLn . TL.encodeUtf8 =<< registerFromString (showTransaction t)
   return j{jtxns=ts++[t]}
 
 -- | Append a string, typically one or more transactions, to a journal
